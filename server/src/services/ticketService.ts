@@ -155,7 +155,7 @@ export const generateTicketNo = (): string => {
   return `WO${dateStr}${random}`;
 };
 
-export const checkAndEscalateOverdue = async (): Promise<void> => {
+export const checkAndEscalateOverdue = async (): Promise<number> => {
   const now = new Date();
   const overdue = await prisma.repairTicket.findMany({
     where: {
@@ -166,15 +166,27 @@ export const checkAndEscalateOverdue = async (): Promise<void> => {
   });
 
   for (const ticket of overdue) {
-    await prisma.repairTicket.update({
-      where: { id: ticket.id },
-      data: {
-        status: TicketStatus.ESCALATED,
-        escalated: true,
-        escalationReason: 'SLA超时自动升级',
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.repairTicket.update({
+        where: { id: ticket.id },
+        data: {
+          status: TicketStatus.ESCALATED,
+          escalated: true,
+          escalationReason: 'SLA超时自动升级',
+        },
+      });
+      await tx.statusHistory.create({
+        data: {
+          ticketId: ticket.id,
+          fromStatus: ticket.status,
+          toStatus: TicketStatus.ESCALATED,
+          operatorId: ticket.createdById,
+          remark: 'SLA超时自动升级',
+        },
+      });
     });
   }
+  return overdue.length;
 };
 
 export const findDuplicateTicket = async (

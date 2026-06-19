@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { createObjectCsvStringifier } from 'csv-writer';
-import { TicketStatus, Role, LogAction, toJsonArray, parseJsonArray } from '../constants/enums';
+import { TicketStatus, Role, LogAction, SparePartRequestStatus, toJsonArray, parseJsonArray } from '../constants/enums';
 import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
 import { success, error } from '../utils/response';
@@ -13,6 +13,7 @@ import {
   calculateSlaDeadline,
   generateTicketNo,
   findDuplicateTicket,
+  checkAndEscalateOverdue,
 } from '../services/ticketService';
 
 export const listTickets = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -367,6 +368,31 @@ export const updateTicketStatus = async (req: AuthRequest, res: Response): Promi
         });
       }
 
+      if (status === TicketStatus.CANCELLED) {
+        const pendingRequests = await tx.sparePartRequest.findMany({
+          where: {
+            ticketId: id,
+            status: { in: [SparePartRequestStatus.PENDING, SparePartRequestStatus.APPROVED, SparePartRequestStatus.PARTIAL_FULFILLED, SparePartRequestStatus.BACKORDER] },
+          },
+        });
+        for (const req of pendingRequests) {
+          const releaseQty = req.requestQty - req.fulfilledQty;
+          await tx.sparePartRequest.update({
+            where: { id: req.id },
+            data: { status: SparePartRequestStatus.CANCELLED, remark: '工单取消，自动取消备件申请' },
+          });
+          if (req.fromStoreId && releaseQty > 0) {
+            await tx.inventory.update({
+              where: { sparePartId_storeId: { sparePartId: req.sparePartId, storeId: req.fromStoreId } },
+              data: {
+                lockedQty: { decrement: releaseQty },
+                availableQty: { increment: releaseQty },
+              },
+            });
+          }
+        }
+      }
+
       return result;
     });
 
@@ -592,5 +618,14 @@ export const exportTicketsCsv = async (req: AuthRequest, res: Response): Promise
     });
   } catch (err: any) {
     error(res, `导出失败: ${err.message}`, 500);
+  }
+};
+
+export const checkSlaEscalation = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const count = await checkAndEscalateOverdue();
+    success(res, { escalatedCount: count }, `SLA检查完成，升级了 ${count} 个工单`);
+  } catch (err: any) {
+    error(res, `SLA升级检查失败: ${err.message}`, 500);
   }
 };

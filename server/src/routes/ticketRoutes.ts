@@ -9,6 +9,7 @@ import {
   mergeTicket,
   exportTicketsCsv,
   rejectTicket,
+  checkSlaEscalation,
 } from '../controllers/ticketController';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -25,6 +26,7 @@ router.use(authenticate);
 
 router.get('/recommend-technicians', recommendTechnicians);
 router.get('/export', exportTicketsCsv);
+router.post('/check-sla-escalation', checkSlaEscalation);
 router.get('/', listTickets);
 router.get('/:id', getTicket);
 router.post('/', validate(createTicketSchema), createTicket);

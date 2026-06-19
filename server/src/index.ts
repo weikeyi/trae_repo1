@@ -13,6 +13,7 @@ import inventoryRoutes from './routes/inventoryRoutes';
 import logRoutes from './routes/logRoutes';
 import statsRoutes from './routes/statsRoutes';
 import slaRoutes from './routes/slaRoutes';
+import { checkAndEscalateOverdue } from './services/ticketService';
 
 const app = express();
 
@@ -44,6 +45,9 @@ const start = async () => {
     console.log('Database connected successfully');
     app.listen(config.port, () => {
       console.log(`Server running on port ${config.port}`);
+      setInterval(async () => {
+        try { await checkAndEscalateOverdue(); } catch (e) { console.error('SLA escalation check failed:', e); }
+      }, 60 * 1000);
     });
   } catch (err) {
     console.error('Failed to start server:', err);

@@ -263,9 +263,32 @@ export const createSparePartRequest = async (req: AuthRequest, res: Response): P
       return;
     }
 
-    const sourceStoreId = fromStoreId;
+    let sourceStoreId = fromStoreId || null;
     let sourceInventory: any = null;
-    if (sourceStoreId) {
+
+    if (!sourceStoreId) {
+      const hqStore = await prisma.store.findFirst({ where: { region: 'HQ' } });
+      const allInventories = await prisma.inventory.findMany({
+        where: { sparePartId, availableQty: { gte: 1 } },
+        include: { store: true },
+        orderBy: { availableQty: 'desc' },
+      });
+
+      const priorityList = allInventories.sort((a, b) => {
+        const aScore = a.storeId === ticket.storeId ? 3 : (hqStore && a.storeId === hqStore.id) ? 2 : 1;
+        const bScore = b.storeId === ticket.storeId ? 3 : (hqStore && b.storeId === hqStore.id) ? 2 : 1;
+        return bScore - aScore;
+      });
+
+      const sufficient = priorityList.find(i => i.availableQty >= requestQty);
+      if (sufficient) {
+        sourceStoreId = sufficient.storeId;
+        sourceInventory = sufficient;
+      } else {
+        sourceStoreId = null;
+        sourceInventory = null;
+      }
+    } else {
       sourceInventory = await prisma.inventory.findUnique({
         where: { sparePartId_storeId: { sparePartId, storeId: sourceStoreId } },
       });
@@ -276,6 +299,8 @@ export const createSparePartRequest = async (req: AuthRequest, res: Response): P
     }
 
     const requestNo = generateRequestNo();
+    const isBackorder = !sourceStoreId;
+
     const created = await prisma.$transaction(async (tx) => {
       const result = await tx.sparePartRequest.create({
         data: {
@@ -283,15 +308,15 @@ export const createSparePartRequest = async (req: AuthRequest, res: Response): P
           ticketId,
           sparePartId,
           requestQty,
-          status: SparePartRequestStatus.PENDING,
+          status: isBackorder ? SparePartRequestStatus.BACKORDER : SparePartRequestStatus.PENDING,
           fromStoreId: sourceStoreId,
           toStoreId: ticket.storeId,
           requestedById: req.user!.userId,
-          remark,
+          remark: isBackorder ? '库存不足，自动进入缺货待补' : remark,
         },
       });
 
-      if (sourceInventory && sourceStoreId) {
+      if (!isBackorder && sourceInventory && sourceStoreId) {
         await tx.inventory.update({
           where: { id: sourceInventory.id },
           data: {
