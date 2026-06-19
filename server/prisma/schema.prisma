@@ -1,0 +1,291 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STORE_MANAGER
+  TECHNICIAN
+}
+
+enum TicketStatus {
+  CREATED
+  ASSIGNED
+  TECHNICIAN_ON_WAY
+  DIAGNOSING
+  WAITING_SPARE_PARTS
+  REPAIRING
+  COMPLETED
+  CANNOT_REPAIR
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  MERGED
+  ESCALATED
+  REJECTED_BY_TECHNICIAN
+}
+
+enum UrgencyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SparePartRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PARTIAL_FULFILLED
+  FULL_FULFILLED
+  BACKORDER
+  CANCELLED
+}
+
+enum TransferStatus {
+  PENDING
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+enum LogAction {
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_CHANGE
+  ASSIGN
+  REASSIGN
+  APPROVE
+  REJECT
+  EXPORT
+  LOCK
+  UNLOCK
+  TRANSFER
+}
+
+model User {
+  id                  Int       @id @default(autoincrement())
+  username            String    @unique
+  passwordHash        String
+  realName            String
+  phone               String?
+  email               String?
+  role                Role
+  storeId             Int?
+  store               Store?    @relation(fields: [storeId], references: [id])
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  technician          TechnicianProfile?
+  assignedTickets     RepairTicket[] @relation("AssignedTickets")
+  createdTickets      RepairTicket[] @relation("CreatedTickets")
+  createdLogs         OperationLog[]
+  statusHistoryLogs   StatusHistory[]
+  requestedParts      SparePartRequest[] @relation("Requester")
+  approvedParts       SparePartRequest[] @relation("Approver")
+  operatedTransfers   Transfer[]
+}
+
+model TechnicianProfile {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @unique
+  user          User      @relation(fields: [userId], references: [id])
+  skills        String[]
+  regions       String[]
+  maxLoad       Int       @default(5)
+  currentLoad   Int       @default(0)
+  rating        Float     @default(0)
+  completedCount Int      @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Store {
+  id                      Int       @id @default(autoincrement())
+  storeCode               String    @unique
+  name                    String
+  address                 String
+  region                  String
+  phone                   String?
+  managerId               Int?
+  isActive                Boolean   @default(true)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  users                   User[]
+  equipments              Equipment[]
+  inventories             Inventory[]
+  tickets                 RepairTicket[]
+  sparePartRequestsFrom   SparePartRequest[] @relation("FromStoreTransfers")
+  sparePartRequestsTo     SparePartRequest[] @relation("ToStoreTransfers")
+  transfersFrom           Transfer[] @relation("TransferFromStore")
+  transfersTo             Transfer[] @relation("TransferToStore")
+}
+
+model Equipment {
+  id            Int       @id @default(autoincrement())
+  equipmentCode String    @unique
+  name          String
+  model         String?
+  category      String
+  storeId       Int
+  store         Store     @relation(fields: [storeId], references: [id])
+  purchaseDate  DateTime?
+  lastMaintenanceDate DateTime?
+  status        String    @default("NORMAL")
+  description   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  tickets       RepairTicket[]
+}
+
+model SlaRule {
+  id            Int       @id @default(autoincrement())
+  urgency       UrgencyLevel @unique
+  responseMinutes   Int
+  resolutionMinutes Int
+  escalationMinutes Int
+  description   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model RepairTicket {
+  id            Int       @id @default(autoincrement())
+  ticketNo      String    @unique
+  equipmentId   Int
+  equipment     Equipment @relation(fields: [equipmentId], references: [id])
+  storeId       Int
+  store         Store     @relation(fields: [storeId], references: [id])
+  faultType     String
+  description   String
+  imageUrls     String[]
+  urgency       UrgencyLevel
+  expectedTime  DateTime?
+  status        TicketStatus @default(CREATED)
+  createdById   Int
+  createdBy     User      @relation("CreatedTickets", fields: [createdById], references: [id])
+  assignedToId  Int?
+  assignedTo    User?     @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  diagnosis     String?
+  repairResult  String?
+  rejectReason  String?
+  mergedTicketId Int?
+  mergedTicket  RepairTicket? @relation("MergedTickets", fields: [mergedTicketId], references: [id])
+  slaDeadline   DateTime?
+  escalated     Boolean   @default(false)
+  escalationReason String?
+  arrivedAt     DateTime?
+  completedAt   DateTime?
+  acceptedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  statusHistory StatusHistory[]
+  sparePartRequests SparePartRequest[]
+  mergedChildren RepairTicket[] @relation("MergedTickets")
+}
+
+model StatusHistory {
+  id            Int       @id @default(autoincrement())
+  ticketId      Int
+  ticket        RepairTicket @relation(fields: [ticketId], references: [id])
+  fromStatus    TicketStatus?
+  toStatus      TicketStatus
+  operatorId    Int
+  operator      User      @relation(fields: [operatorId], references: [id])
+  remark        String?
+  createdAt     DateTime  @default(now())
+}
+
+model SparePart {
+  id            Int       @id @default(autoincrement())
+  partCode      String    @unique
+  name          String
+  category      String
+  unit          String
+  description   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  inventories   Inventory[]
+}
+
+model Inventory {
+  id            Int       @id @default(autoincrement())
+  sparePartId   Int
+  sparePart     SparePart @relation(fields: [sparePartId], references: [id])
+  storeId       Int
+  store         Store     @relation(fields: [storeId], references: [id])
+  quantity      Int       @default(0)
+  lockedQty     Int       @default(0)
+  availableQty  Int       @default(0)
+  minStock      Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  @@unique([sparePartId, storeId])
+}
+
+model SparePartRequest {
+  id            Int       @id @default(autoincrement())
+  requestNo     String    @unique
+  ticketId      Int
+  ticket        RepairTicket @relation(fields: [ticketId], references: [id])
+  sparePartId   Int
+  sparePart     SparePart @relation(fields: [sparePartId], references: [id])
+  requestQty    Int
+  fulfilledQty  Int       @default(0)
+  status        SparePartRequestStatus @default(PENDING)
+  fromStoreId   Int?
+  fromStore     Store?    @relation("FromStoreTransfers", fields: [fromStoreId], references: [id])
+  toStoreId     Int
+  toStore       Store     @relation("ToStoreTransfers", fields: [toStoreId], references: [id])
+  requestedById Int
+  requestedBy   User      @relation("Requester", fields: [requestedById], references: [id])
+  approvedById  Int?
+  approvedBy    User?     @relation("Approver", fields: [approvedById], references: [id])
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  transfers     Transfer[]
+}
+
+model Transfer {
+  id            Int       @id @default(autoincrement())
+  transferNo    String    @unique
+  requestId     Int
+  request       SparePartRequest @relation(fields: [requestId], references: [id])
+  sparePartId   Int
+  sparePart     SparePart @relation(fields: [sparePartId], references: [id])
+  fromStoreId   Int
+  fromStore     Store     @relation("TransferFromStore", fields: [fromStoreId], references: [id])
+  toStoreId     Int
+  toStore       Store     @relation("TransferToStore", fields: [toStoreId], references: [id])
+  quantity      Int
+  status        TransferStatus @default(PENDING)
+  operatorId    Int
+  operator      User      @relation(fields: [operatorId], references: [id])
+  shippedAt     DateTime?
+  receivedAt    DateTime?
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model OperationLog {
+  id            Int       @id @default(autoincrement())
+  action        LogAction
+  module        String
+  targetId      Int?
+  targetType    String?
+  operatorId    Int
+  operator      User      @relation(fields: [operatorId], references: [id])
+  detail        String?
+  oldValue      String?
+  newValue      String?
+  ipAddress     String?
+  createdAt     DateTime  @default(now())
+}

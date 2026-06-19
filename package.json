@@ -1,0 +1,17 @@
+{
+  "name": "repair-spare-parts-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "多门店设备报修与备件调拨系统",
+  "scripts": {
+    "install:server": "cd server && npm install",
+    "install:web": "cd web && npm install",
+    "install:all": "npm run install:server && npm run install:web",
+    "db:setup": "cd server && npx prisma migrate dev --name init && npx prisma generate && npx ts-node prisma/seed.ts",
+    "dev:server": "cd server && npm run dev",
+    "dev:web": "cd web && npm run dev",
+    "build:server": "cd server && npm run build",
+    "build:web": "cd web && npm run build",
+    "test:server": "cd server && npm run test"
+  }
+}
