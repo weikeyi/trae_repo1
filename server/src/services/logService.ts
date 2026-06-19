@@ -1,4 +1,4 @@
-import { LogAction } from '@prisma/client';
+import { LogAction } from '../constants/enums';
 import prisma from '../config/prisma';
 
 interface LogOptions {

@@ -1,6 +1,6 @@
 import { Request } from 'express';
 import { config } from '../config';
-import { PaginationParams } from '../types';
+import { PaginationParams, PaginatedResult } from '../types';
 
 export const getPaginationParams = (req: Request): PaginationParams => {
   const page = Math.max(1, parseInt(req.query.page as string || String(config.pagination.defaultPage), 10));

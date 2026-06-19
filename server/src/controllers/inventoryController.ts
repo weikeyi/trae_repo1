@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { Role, SparePartRequestStatus, TransferStatus, LogAction, TicketStatus } from '@prisma/client';
+import { Role, SparePartRequestStatus, TransferStatus, LogAction, TicketStatus } from '../constants/enums';
 import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
 import { success, error } from '../utils/response';
@@ -252,7 +252,7 @@ export const createSparePartRequest = async (req: AuthRequest, res: Response): P
       error(res, '只能为自己负责的工单申请备件', 403);
       return;
     }
-    if (![TicketStatus.DIAGNOSING, TicketStatus.WAITING_SPARE_PARTS, TicketStatus.REPAIRING].includes(ticket.status)) {
+    if (!([TicketStatus.DIAGNOSING, TicketStatus.WAITING_SPARE_PARTS, TicketStatus.REPAIRING] as string[]).includes(ticket.status)) {
       error(res, `当前工单状态 ${ticket.status} 不可申请备件`, 400);
       return;
     }
@@ -264,7 +264,7 @@ export const createSparePartRequest = async (req: AuthRequest, res: Response): P
     }
 
     const sourceStoreId = fromStoreId;
-    let sourceInventory;
+    let sourceInventory: any = null;
     if (sourceStoreId) {
       sourceInventory = await prisma.inventory.findUnique({
         where: { sparePartId_storeId: { sparePartId, storeId: sourceStoreId } },
@@ -411,7 +411,7 @@ export const cancelSparePartRequest = async (req: AuthRequest, res: Response): P
       error(res, '备件申请不存在', 404);
       return;
     }
-    if ([SparePartRequestStatus.FULL_FULFILLED, SparePartRequestStatus.CANCELLED].includes(existing.status)) {
+    if (([SparePartRequestStatus.FULL_FULFILLED, SparePartRequestStatus.CANCELLED] as string[]).includes(existing.status)) {
       error(res, '该申请无法取消', 400);
     }
     if (req.user?.role !== Role.ADMIN && req.user?.userId !== existing.requestedById) {

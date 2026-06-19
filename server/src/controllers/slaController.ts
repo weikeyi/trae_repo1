@@ -3,7 +3,7 @@ import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
 import { success, error } from '../utils/response';
 import { logOperation } from '../services/logService';
-import { LogAction } from '@prisma/client';
+import { LogAction } from '../constants/enums';
 
 export const listSlaRules = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

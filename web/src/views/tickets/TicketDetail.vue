@@ -89,7 +89,7 @@
           <div class="action-bar">
             <template v-if="canAssign">
               <el-button type="primary" @click="openAssignDialog">
-                <el-icon><User /></el-icon>
+                <el-icon><UserIcon /></el-icon>
                 派单
               </el-button>
             </template>
@@ -365,7 +365,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
-import { Back, User } from '@element-plus/icons-vue';
+import { Back, User as UserIcon } from '@element-plus/icons-vue';
 import {
   ElMessage,
   ElMessageBox,

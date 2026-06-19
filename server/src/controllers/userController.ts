@@ -1,12 +1,11 @@
 import { Response } from 'express';
-import { Role } from '@prisma/client';
+import { Role, LogAction, toJsonArray } from '../constants/enums';
 import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
 import { hashPassword } from '../utils/auth';
 import { success, error } from '../utils/response';
 import { getPaginationParams, buildPaginatedResult } from '../utils/pagination';
 import { logOperation } from '../services/logService';
-import { LogAction } from '@prisma/client';
 
 export const listUsers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -123,8 +122,8 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
         storeId,
         technician: role === Role.TECHNICIAN ? {
           create: {
-            skills: skills || [],
-            regions: regions || [],
+            skills: toJsonArray(skills || []),
+            regions: toJsonArray(regions || []),
             maxLoad: maxLoad || 5,
           },
         } : undefined,
@@ -155,7 +154,7 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<void>
     const id = parseInt(req.params.id, 10);
     const { password, realName, phone, email, role, storeId, isActive, skills, regions, maxLoad } = req.body;
 
-    const existing = await prisma.user.findUnique({ where: { id } });
+    const existing = await prisma.user.findUnique({ where: { id }, include: { technician: true } });
     if (!existing) {
       error(res, '用户不存在', 404);
       return;
@@ -170,8 +169,8 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<void>
         ...updateData,
         technician: role === Role.TECHNICIAN ? {
           upsert: {
-            create: { skills: skills || [], regions: regions || [], maxLoad: maxLoad || 5 },
-            update: { skills, regions, maxLoad },
+            create: { skills: toJsonArray(skills || []), regions: toJsonArray(regions || []), maxLoad: maxLoad || 5 },
+            update: { skills: skills !== undefined ? toJsonArray(skills) : undefined, regions: regions !== undefined ? toJsonArray(regions) : undefined, maxLoad },
           },
         } : existing.technician ? { delete: true } : undefined,
       },

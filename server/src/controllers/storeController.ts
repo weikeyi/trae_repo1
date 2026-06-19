@@ -1,11 +1,10 @@
 import { Response } from 'express';
-import { Role } from '@prisma/client';
+import { Role, LogAction } from '../constants/enums';
 import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
 import { success, error } from '../utils/response';
 import { getPaginationParams, buildPaginatedResult } from '../utils/pagination';
 import { logOperation } from '../services/logService';
-import { LogAction } from '@prisma/client';
 
 export const listStores = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

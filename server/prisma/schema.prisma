@@ -1,3 +1,8 @@
+// SQLite 兼容版 schema
+// 注意：SQLite 不支持原生 enum 和 String[]，所以：
+//   - 所有枚举类型用 String 代替，业务层通过 Zod/常量进行值校验
+//   - 所有数组类型用 Json 代替，业务层 JSON.parse/stringify 处理
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,68 +12,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  ADMIN
-  STORE_MANAGER
-  TECHNICIAN
-}
-
-enum TicketStatus {
-  CREATED
-  ASSIGNED
-  TECHNICIAN_ON_WAY
-  DIAGNOSING
-  WAITING_SPARE_PARTS
-  REPAIRING
-  COMPLETED
-  CANNOT_REPAIR
-  ACCEPTED
-  REJECTED
-  CANCELLED
-  MERGED
-  ESCALATED
-  REJECTED_BY_TECHNICIAN
-}
-
-enum UrgencyLevel {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
-}
-
-enum SparePartRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  PARTIAL_FULFILLED
-  FULL_FULFILLED
-  BACKORDER
-  CANCELLED
-}
-
-enum TransferStatus {
-  PENDING
-  IN_TRANSIT
-  RECEIVED
-  CANCELLED
-}
-
-enum LogAction {
-  CREATE
-  UPDATE
-  DELETE
-  STATUS_CHANGE
-  ASSIGN
-  REASSIGN
-  APPROVE
-  REJECT
-  EXPORT
-  LOCK
-  UNLOCK
-  TRANSFER
-}
-
 model User {
   id                  Int       @id @default(autoincrement())
   username            String    @unique
@@ -76,7 +19,8 @@ model User {
   realName            String
   phone               String?
   email               String?
-  role                Role
+  // Role: ADMIN | STORE_MANAGER | TECHNICIAN
+  role                String
   storeId             Int?
   store               Store?    @relation(fields: [storeId], references: [id])
   isActive            Boolean   @default(true)
@@ -96,8 +40,10 @@ model TechnicianProfile {
   id            Int       @id @default(autoincrement())
   userId        Int       @unique
   user          User      @relation(fields: [userId], references: [id])
-  skills        String[]
-  regions       String[]
+  // 技能列表，存储为 JSON.stringify 后的字符串："[\"空调维修\",\"制冷设备\"]"
+  skills        String
+  // 区域列表，存储为 JSON.stringify 后的字符串："[\"华东\",\"华北\"]"
+  regions       String
   maxLoad       Int       @default(5)
   currentLoad   Int       @default(0)
   rating        Float     @default(0)
@@ -146,7 +92,8 @@ model Equipment {
 
 model SlaRule {
   id            Int       @id @default(autoincrement())
-  urgency       UrgencyLevel @unique
+  // urgency: LOW | MEDIUM | HIGH | URGENT
+  urgency       String    @unique
   responseMinutes   Int
   resolutionMinutes Int
   escalationMinutes Int
@@ -164,10 +111,13 @@ model RepairTicket {
   store         Store     @relation(fields: [storeId], references: [id])
   faultType     String
   description   String
-  imageUrls     String[]
-  urgency       UrgencyLevel
+  // 图片 URL 列表，JSON.stringify 后的字符串数组
+  imageUrls     String
+  // urgency: LOW | MEDIUM | HIGH | URGENT
+  urgency       String
   expectedTime  DateTime?
-  status        TicketStatus @default(CREATED)
+  // status: CREATED/ASSIGNED/... 共13+1种
+  status        String    @default("CREATED")
   createdById   Int
   createdBy     User      @relation("CreatedTickets", fields: [createdById], references: [id])
   assignedToId  Int?
@@ -194,8 +144,9 @@ model StatusHistory {
   id            Int       @id @default(autoincrement())
   ticketId      Int
   ticket        RepairTicket @relation(fields: [ticketId], references: [id])
-  fromStatus    TicketStatus?
-  toStatus      TicketStatus
+  // TicketStatus 字符串
+  fromStatus    String?
+  toStatus      String
   operatorId    Int
   operator      User      @relation(fields: [operatorId], references: [id])
   remark        String?
@@ -211,7 +162,9 @@ model SparePart {
   description   String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  inventories   Inventory[]
+  inventories             Inventory[]
+  sparePartRequests       SparePartRequest[]
+  transfers               Transfer[]
 }
 
 model Inventory {
@@ -238,7 +191,8 @@ model SparePartRequest {
   sparePart     SparePart @relation(fields: [sparePartId], references: [id])
   requestQty    Int
   fulfilledQty  Int       @default(0)
-  status        SparePartRequestStatus @default(PENDING)
+  // status: PENDING|APPROVED|REJECTED|PARTIAL_FULFILLED|FULL_FULFILLED|BACKORDER|CANCELLED
+  status        String    @default("PENDING")
   fromStoreId   Int?
   fromStore     Store?    @relation("FromStoreTransfers", fields: [fromStoreId], references: [id])
   toStoreId     Int
@@ -265,7 +219,8 @@ model Transfer {
   toStoreId     Int
   toStore       Store     @relation("TransferToStore", fields: [toStoreId], references: [id])
   quantity      Int
-  status        TransferStatus @default(PENDING)
+  // status: PENDING|IN_TRANSIT|RECEIVED|CANCELLED
+  status        String    @default("PENDING")
   operatorId    Int
   operator      User      @relation(fields: [operatorId], references: [id])
   shippedAt     DateTime?
@@ -277,7 +232,8 @@ model Transfer {
 
 model OperationLog {
   id            Int       @id @default(autoincrement())
-  action        LogAction
+  // LogAction 字符串：CREATE/UPDATE/DELETE/...
+  action        String
   module        String
   targetId      Int?
   targetType    String?

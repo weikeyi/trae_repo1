@@ -4,7 +4,7 @@ import prisma from '../config/prisma';
 import { success, error } from '../utils/response';
 import { getPaginationParams, buildPaginatedResult } from '../utils/pagination';
 import { logOperation } from '../services/logService';
-import { LogAction } from '@prisma/client';
+import { LogAction } from '../constants/enums';
 
 export const listSpareParts = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

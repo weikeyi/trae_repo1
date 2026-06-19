@@ -4,7 +4,7 @@ import prisma from '../config/prisma';
 import { comparePassword, generateToken } from '../utils/auth';
 import { success, error } from '../utils/response';
 import { logOperation } from '../services/logService';
-import { LogAction } from '@prisma/client';
+import { LogAction, Role } from '../constants/enums';
 
 export const login = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -28,7 +28,7 @@ export const login = async (req: AuthRequest, res: Response): Promise<void> => {
     const token = generateToken({
       userId: user.id,
       username: user.username,
-      role: user.role,
+      role: user.role as Role,
       storeId: user.storeId,
     });
 

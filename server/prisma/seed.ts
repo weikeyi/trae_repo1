@@ -1,4 +1,5 @@
-import { PrismaClient, Role, UrgencyLevel } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { Role, UrgencyLevel, toJsonArray } from '../src/constants/enums';
 import { hashPassword } from '../src/utils/auth';
 
 const prisma = new PrismaClient();
@@ -123,8 +124,8 @@ async function main() {
       role: Role.TECHNICIAN,
       technician: {
         create: {
-          skills: ['空调维修', '制冷设备', '电器维修'],
-          regions: ['华东'],
+          skills: toJsonArray(['空调维修', '制冷设备', '电器维修']),
+          regions: toJsonArray(['华东']),
           maxLoad: 5,
         },
       },
@@ -143,8 +144,8 @@ async function main() {
       role: Role.TECHNICIAN,
       technician: {
         create: {
-          skills: ['空调维修', '暖通设备'],
-          regions: ['华东', '华北'],
+          skills: toJsonArray(['空调维修', '暖通设备']),
+          regions: toJsonArray(['华东', '华北']),
           maxLoad: 4,
         },
       },
@@ -163,8 +164,8 @@ async function main() {
       role: Role.TECHNICIAN,
       technician: {
         create: {
-          skills: ['电气维修', '电路检修'],
-          regions: ['华南'],
+          skills: toJsonArray(['电气维修', '电路检修']),
+          regions: toJsonArray(['华南']),
           maxLoad: 6,
         },
       },

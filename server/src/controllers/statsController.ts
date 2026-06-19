@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { TicketStatus, Role } from '@prisma/client';
+import { TicketStatus, Role, parseJsonArray } from '../constants/enums';
 import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
 import { success, error } from '../utils/response';
@@ -212,8 +212,8 @@ export const getTechnicianStats = async (req: AuthRequest, res: Response): Promi
         maxLoad: t.technician?.maxLoad || 0,
         completedCount: t.technician?.completedCount || 0,
         rating: t.technician?.rating || 0,
-        skills: t.technician?.skills || [],
-        regions: t.technician?.regions || [],
+        skills: parseJsonArray(t.technician?.skills),
+        regions: parseJsonArray(t.technician?.regions),
         ticketHandled: t.assignedTickets.length,
       }))
     );

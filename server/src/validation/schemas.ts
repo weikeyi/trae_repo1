@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { Role, UrgencyLevel, TicketStatus, SparePartRequestStatus, TransferStatus } from '@prisma/client';
+import { Role, UrgencyLevel, TicketStatus, SparePartRequestStatus, TransferStatus } from '../constants/enums';
+
+// 辅助函数：将 const 对象值数组转换为 z.enum 需要的元组类型
+const enumVals = <T extends Record<string, string>>(obj: T): readonly [string, ...string[]] =>
+  Object.values(obj) as unknown as readonly [string, ...string[]];
 
 export const loginSchema = z.object({
   username: z.string().min(1, '用户名不能为空'),
@@ -12,7 +16,7 @@ export const createUserSchema = z.object({
   realName: z.string().min(1, '真实姓名不能为空'),
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
-  role: z.nativeEnum(Role),
+  role: z.enum(enumVals(Role)),
   storeId: z.number().optional(),
   skills: z.array(z.string()).optional(),
   regions: z.array(z.string()).optional(),
@@ -23,7 +27,7 @@ export const updateUserSchema = z.object({
   realName: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
-  role: z.nativeEnum(Role).optional(),
+  role: z.enum(enumVals(Role)).optional(),
   storeId: z.number().optional().nullable(),
   isActive: z.boolean().optional(),
   password: z.string().min(6).optional(),
@@ -77,7 +81,7 @@ export const createTicketSchema = z.object({
   faultType: z.string().min(1, '故障类型不能为空'),
   description: z.string().min(1, '故障描述不能为空'),
   imageUrls: z.array(z.string()).optional(),
-  urgency: z.nativeEnum(UrgencyLevel),
+  urgency: z.enum(enumVals(UrgencyLevel)),
   expectedTime: z.string().optional(),
 });
 
@@ -87,7 +91,7 @@ export const assignTicketSchema = z.object({
 });
 
 export const updateTicketStatusSchema = z.object({
-  status: z.nativeEnum(TicketStatus),
+  status: z.enum(enumVals(TicketStatus)),
   remark: z.string().optional(),
   diagnosis: z.string().optional(),
   repairResult: z.string().optional(),
@@ -123,7 +127,7 @@ export const createSparePartRequestSchema = z.object({
 });
 
 export const updateSparePartRequestSchema = z.object({
-  status: z.nativeEnum(SparePartRequestStatus),
+  status: z.enum(enumVals(SparePartRequestStatus)),
   remark: z.string().optional(),
   fulfilledQty: z.number().min(0).optional(),
 });
@@ -138,12 +142,12 @@ export const createTransferSchema = z.object({
 });
 
 export const updateTransferSchema = z.object({
-  status: z.nativeEnum(TransferStatus),
+  status: z.enum(enumVals(TransferStatus)),
   remark: z.string().optional(),
 });
 
 export const createSlaSchema = z.object({
-  urgency: z.nativeEnum(UrgencyLevel),
+  urgency: z.enum(enumVals(UrgencyLevel)),
   responseMinutes: z.number().min(1),
   resolutionMinutes: z.number().min(1),
   escalationMinutes: z.number().min(1),

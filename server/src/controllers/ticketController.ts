@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { createObjectCsvStringifier } from 'csv-writer';
-import { TicketStatus, Role, LogAction } from '@prisma/client';
+import { TicketStatus, Role, LogAction, toJsonArray, parseJsonArray } from '../constants/enums';
 import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
 import { success, error } from '../utils/response';
@@ -60,7 +60,10 @@ export const listTickets = async (req: AuthRequest, res: Response): Promise<void
       prisma.repairTicket.count({ where }),
     ]);
 
-    const result = buildPaginatedResult(tickets, total, page, pageSize);
+    const result = buildPaginatedResult(
+      tickets.map(t => ({ ...t, imageUrls: parseJsonArray(t.imageUrls) })),
+      total, page, pageSize
+    );
     success(res, result);
   } catch (err: any) {
     error(res, `获取工单列表失败: ${err.message}`, 500);
@@ -106,7 +109,7 @@ export const getTicket = async (req: AuthRequest, res: Response): Promise<void> 
       error(res, '权限不足', 403);
       return;
     }
-    success(res, ticket);
+    success(res, { ...ticket, imageUrls: parseJsonArray(ticket.imageUrls) });
   } catch (err: any) {
     error(res, `获取工单详情失败: ${err.message}`, 500);
   }
@@ -147,7 +150,7 @@ export const createTicket = async (req: AuthRequest, res: Response): Promise<voi
         storeId: equipment.storeId,
         faultType,
         description,
-        imageUrls: imageUrls || [],
+        imageUrls: toJsonArray(imageUrls || []),
         urgency,
         expectedTime: expectedTime ? new Date(expectedTime) : undefined,
         status: TicketStatus.CREATED,
@@ -221,7 +224,7 @@ export const assignTicket = async (req: AuthRequest, res: Response): Promise<voi
       error(res, '工单不存在', 404);
       return;
     }
-    if (![TicketStatus.CREATED, TicketStatus.REJECTED_BY_TECHNICIAN, TicketStatus.ESCALATED].includes(ticket.status)) {
+    if (!([TicketStatus.CREATED, TicketStatus.REJECTED_BY_TECHNICIAN, TicketStatus.ESCALATED] as string[]).includes(ticket.status)) {
       error(res, `当前状态 ${ticket.status} 不可派单`, 400);
       return;
     }
@@ -469,7 +472,7 @@ export const mergeTicket = async (req: AuthRequest, res: Response): Promise<void
       error(res, '只能合并相同设备的工单', 400);
       return;
     }
-    if ([TicketStatus.MERGED, TicketStatus.CANCELLED, TicketStatus.ACCEPTED].includes(source.status)) {
+    if (([TicketStatus.MERGED, TicketStatus.CANCELLED, TicketStatus.ACCEPTED] as string[]).includes(source.status)) {
       error(res, '当前工单状态不可合并', 400);
       return;
     }

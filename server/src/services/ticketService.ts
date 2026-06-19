@@ -1,4 +1,4 @@
-import { TicketStatus, UrgencyLevel, Role } from '@prisma/client';
+import { TicketStatus, UrgencyLevel, Role, parseJsonArray } from '../constants/enums';
 import prisma from '../config/prisma';
 
 const STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
@@ -33,14 +33,14 @@ const STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   [TicketStatus.ESCALATED]: [TicketStatus.ASSIGNED, TicketStatus.CANCELLED],
 };
 
-export const canTransition = (from: TicketStatus, to: TicketStatus): boolean => {
-  return STATUS_TRANSITIONS[from]?.includes(to) || false;
+export const canTransition = (from: string, to: string): boolean => {
+  return STATUS_TRANSITIONS[from as TicketStatus]?.includes(to as TicketStatus) || false;
 };
 
 export const canUserTransition = (
-  userRole: Role,
-  currentStatus: TicketStatus,
-  targetStatus: TicketStatus,
+  userRole: string,
+  currentStatus: string,
+  targetStatus: string,
   userId: number,
   assignedToId: number | null,
   storeId: number,
@@ -65,7 +65,9 @@ export const canUserTransition = (
       return userRole === Role.STORE_MANAGER && userStoreId === storeId;
     case TicketStatus.CANCELLED:
       if (userRole === Role.STORE_MANAGER && userStoreId === storeId) {
-        return [TicketStatus.CREATED, TicketStatus.ASSIGNED, TicketStatus.WAITING_SPARE_PARTS].includes(currentStatus);
+        return ([TicketStatus.CREATED, TicketStatus.ASSIGNED, TicketStatus.WAITING_SPARE_PARTS] as string[]).includes(
+          currentStatus
+        );
       }
       return userRole === Role.ADMIN;
     case TicketStatus.MERGED:
@@ -93,25 +95,31 @@ export const recommendTechnicians = async (
   faultType: string,
   urgency: UrgencyLevel
 ): Promise<RecommendedTechnician[]> => {
+  // SQLite Json 字段不支持 `has:` 操作符，先查出所有 technician 再在内存过滤
   const technicians = await prisma.user.findMany({
     where: {
       role: Role.TECHNICIAN,
       isActive: true,
-      technician: {
-        regions: { has: storeRegion },
-      },
     },
     include: { technician: true },
   });
 
+  const filtered = technicians.filter((t) => {
+    if (!t.technician) return false;
+    const regions = parseJsonArray(t.technician.regions);
+    return regions.includes(storeRegion);
+  });
+
   const urgencyWeight = urgency === UrgencyLevel.URGENT ? 2 : urgency === UrgencyLevel.HIGH ? 1.5 : 1;
 
-  const scored = technicians
+  const scored = filtered
     .map((tech) => {
       const profile = tech.technician!;
+      const skills = parseJsonArray(profile.skills);
+      const regions = parseJsonArray(profile.regions);
       let score = 0;
-      if (profile.skills.includes(faultType)) score += 50;
-      if (profile.skills.some((s) => faultType.includes(s) || s.includes(faultType))) score += 25;
+      if (skills.includes(faultType)) score += 50;
+      if (skills.some((s) => faultType.includes(s) || s.includes(faultType))) score += 25;
       const loadRatio = profile.currentLoad / profile.maxLoad;
       score += (1 - loadRatio) * 30;
       score += profile.rating * 5;
@@ -124,8 +132,8 @@ export const recommendTechnicians = async (
         score: Math.round(score * 10) / 10,
         currentLoad: profile.currentLoad,
         maxLoad: profile.maxLoad,
-        regions: profile.regions,
-        skills: profile.skills,
+        regions,
+        skills,
       };
     })
     .filter((t) => t.currentLoad < t.maxLoad)

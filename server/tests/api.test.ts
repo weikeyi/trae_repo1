@@ -2,7 +2,7 @@ import request from 'supertest';
 import app from '../src/index';
 import prisma from '../src/config/prisma';
 import { hashPassword, generateToken } from '../src/utils/auth';
-import { Role, UrgencyLevel } from '@prisma/client';
+import { Role, UrgencyLevel, toJsonArray } from '../src/constants/enums';
 
 let adminToken: string;
 let storeToken: string;
@@ -31,7 +31,7 @@ beforeAll(async () => {
     },
   });
   adminId = admin.id;
-  adminToken = generateToken({ userId: admin.id, username: admin.username, role: admin.role });
+  adminToken = generateToken({ userId: admin.id, username: admin.username, role: admin.role as Role });
 
   const testStore = await prisma.store.upsert({
     where: { storeCode: 'TEST001' },
@@ -57,7 +57,7 @@ beforeAll(async () => {
     },
   });
   storeId = store.id;
-  storeToken = generateToken({ userId: store.id, username: store.username, role: store.role, storeId: store.storeId });
+  storeToken = generateToken({ userId: store.id, username: store.username, role: store.role as Role, storeId: store.storeId });
 
   const tech = await prisma.user.upsert({
     where: { username: 'testtech' },
@@ -69,15 +69,15 @@ beforeAll(async () => {
       role: Role.TECHNICIAN,
       technician: {
         create: {
-          skills: ['空调维修'],
-          regions: ['测试区域'],
+          skills: toJsonArray(['空调维修']),
+          regions: toJsonArray(['测试区域']),
           maxLoad: 5,
         },
       },
     },
   });
   techId = tech.id;
-  techToken = generateToken({ userId: tech.id, username: tech.username, role: tech.role });
+  techToken = generateToken({ userId: tech.id, username: tech.username, role: tech.role as Role });
 
   const equipment = await prisma.equipment.upsert({
     where: { equipmentCode: 'TEST-EQ-001' },

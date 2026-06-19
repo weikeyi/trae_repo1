@@ -2,7 +2,7 @@ export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   jwt: {
     secret: process.env.JWT_SECRET || 'repair-spare-parts-secret-key-2024',
-    expiresIn: '24h',
+    expiresIn: '24h' as string | number,
   },
   pagination: {
     defaultPage: 1,
