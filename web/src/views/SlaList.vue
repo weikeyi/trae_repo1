@@ -9,8 +9,8 @@
       <el-table :data="list" v-loading="loading" border stripe>
         <el-table-column label="紧急程度" width="100">
           <template #default="{ row }">
-            <el-tag :type="URGENCY_TYPE[row.urgency]" size="small">
-              {{ URGENCY_LABEL[row.urgency] }}
+            <el-tag :type="URGENCY_TYPE[row.urgency as UrgencyLevel]" size="small">
+              {{ URGENCY_LABEL[row.urgency as UrgencyLevel] }}
             </el-tag>
           </template>
         </el-table-column>
@@ -101,7 +101,7 @@ const loadList = async () => {
   loading.value = true;
   try {
     const res = await slaApi.list();
-    list.value = res.data;
+    list.value = res.data!;
   } finally {
     loading.value = false;
   }

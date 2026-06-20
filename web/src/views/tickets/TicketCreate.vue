@@ -61,11 +61,11 @@
                 :key="idx"
                 closable
                 style="margin: 2px"
-                @close="form.imageUrls.splice(idx, 1)"
+                @close="form.imageUrls!.splice(idx, 1)"
               >
                 {{ url.length > 30 ? url.slice(0, 30) + '...' : url }}
               </el-tag>
-              <span v-if="form.imageUrls.length === 0" style="color: #909399; font-size: 12px">
+              <span v-if="form.imageUrls!.length === 0" style="color: #909399; font-size: 12px">
                 暂无图片
               </span>
             </div>
@@ -120,12 +120,12 @@ const loadEquipments = async () => {
     pageSize: 999,
     storeId: userStore.userInfo?.storeId || undefined,
   });
-  equipments.value = res.data.data;
+  equipments.value = res.data!.data;
 };
 
 const addImage = () => {
-  if (imageUrlInput.value && !form.imageUrls.includes(imageUrlInput.value)) {
-    form.imageUrls.push(imageUrlInput.value);
+  if (imageUrlInput.value && !form.imageUrls!.includes(imageUrlInput.value)) {
+    form.imageUrls!.push(imageUrlInput.value);
     imageUrlInput.value = '';
   }
 };
@@ -138,7 +138,7 @@ const handleSubmit = async () => {
     try {
       const res = await ticketApi.create(form);
       ElMessage.success('工单创建成功');
-      router.push(`/tickets/${res.data.id}`);
+      router.push(`/tickets/${res.data!.id}`);
     } catch (e: any) {
       if (e?.response?.status === 409) {
         ElMessage.warning(e.response.data.message);

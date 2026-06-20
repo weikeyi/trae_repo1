@@ -149,8 +149,8 @@
             <el-table-column prop="fromStore?.name" label="来源" width="100" />
             <el-table-column label="状态" width="100">
               <template #default="{ row }">
-                <el-tag :type="REQUEST_STATUS_TYPE[row.status]" size="small">
-                  {{ REQUEST_STATUS_LABEL[row.status] }}
+                <el-tag :type="REQUEST_STATUS_TYPE[row.status as SparePartRequestStatus]" size="small">
+                  {{ REQUEST_STATUS_LABEL[row.status as SparePartRequestStatus] }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -382,6 +382,7 @@ import type {
   User,
   SparePart,
   SparePartRequest,
+  SparePartRequestStatus,
 } from '@/types';
 import dayjs from 'dayjs';
 import {
@@ -561,7 +562,7 @@ const getStatusTimelineType = (s: TicketStatus) => {
 const loadTicket = async () => {
   const id = parseInt(route.params.id as string, 10);
   const res = await ticketApi.get(id);
-  ticket.value = res.data;
+  ticket.value = res.data as RepairTicket || null;
   loadRecommendations();
   loadMergeableTickets();
 };
@@ -587,7 +588,7 @@ const loadMergeableTickets = async () => {
       equipmentId: ticket.value.equipmentId,
       pageSize: 999,
     });
-    mergeableTickets.value = res.data.data.filter(
+    mergeableTickets.value = res.data!.data.filter(
       (t) =>
         t.id !== ticket.value!.id &&
         !['MERGED', 'CANCELLED', 'ACCEPTED'].includes(t.status)
@@ -597,7 +598,7 @@ const loadMergeableTickets = async () => {
 
 const loadSpareParts = async () => {
   const res = await sparePartApi.list({ pageSize: 999 });
-  allSpareParts.value = res.data.data;
+  allSpareParts.value = res.data!.data;
 };
 
 const checkAvail = async () => {

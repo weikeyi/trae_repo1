@@ -52,8 +52,8 @@
         <el-table-column prop="requestedBy?.realName" label="申请人" width="90" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="REQUEST_STATUS_TYPE[row.status]" size="small">
-              {{ REQUEST_STATUS_LABEL[row.status] }}
+            <el-tag :type="REQUEST_STATUS_TYPE[row.status as SparePartRequestStatus]" size="small">
+              {{ REQUEST_STATUS_LABEL[row.status as SparePartRequestStatus] }}
             </el-tag>
           </template>
         </el-table-column>
@@ -233,8 +233,8 @@ const loadList = async () => {
       pageSize: pagination.pageSize,
       status: filters.status || undefined,
     });
-    list.value = res.data.data;
-    pagination.total = res.data.total;
+    list.value = res.data!.data;
+    pagination.total = res.data!.total;
   } finally {
     loading.value = false;
   }
@@ -305,12 +305,12 @@ const cancel = async (row: SparePartRequest) => {
 
 const loadMyTickets = async () => {
   const res = await ticketApi.list({ pageSize: 999 });
-  myTickets.value = res.data.data;
+  myTickets.value = res.data!.data;
 };
 
 const loadParts = async () => {
   const res = await sparePartApi.list({ pageSize: 999 });
-  parts.value = res.data.data;
+  parts.value = res.data!.data;
 };
 
 const onTicketChange = () => {

@@ -105,6 +105,8 @@ export interface RepairTicket {
   repairResult?: string | null;
   rejectReason?: string | null;
   mergedTicketId?: number | null;
+  mergedTicket?: RepairTicket | null;
+  mergedChildren?: RepairTicket[];
   slaDeadline?: string | null;
   escalated: boolean;
   escalationReason?: string | null;

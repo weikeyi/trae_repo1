@@ -161,7 +161,7 @@ const formatDate = (d: string) => dayjs(d).format('YYYY-MM-DD HH:mm');
 
 const loadStores = async () => {
   const res = await storeApi.list({ pageSize: 999 });
-  stores.value = res.data.data;
+  stores.value = res.data!.data;
 };
 
 const loadList = async () => {
@@ -172,8 +172,8 @@ const loadList = async () => {
       pageSize: pagination.pageSize,
       ...filters,
     });
-    list.value = res.data.data;
-    pagination.total = res.data.total;
+    list.value = res.data!.data;
+    pagination.total = res.data!.total;
   } finally {
     loading.value = false;
   }

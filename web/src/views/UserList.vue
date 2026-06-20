@@ -31,7 +31,7 @@
         <el-table-column label="角色" width="100">
           <template #default="{ row }">
             <el-tag :type="row.role === 'ADMIN' ? 'danger' : row.role === 'STORE_MANAGER' ? 'primary' : 'success'" size="small">
-              {{ ROLE_LABEL[row.role] }}
+              {{ ROLE_LABEL[row.role as Role] }}
             </el-tag>
           </template>
         </el-table-column>
@@ -159,6 +159,7 @@ import { storeApi } from '@/api/store';
 import type { User, Store } from '@/types';
 import dayjs from 'dayjs';
 import { ROLE_LABEL, FAULT_TYPES, REGIONS } from '@/constants';
+import { Role } from '@/types';
 
 const loading = ref(false);
 const submitting = ref(false);
@@ -206,7 +207,7 @@ const formatDate = (d: string) => dayjs(d).format('YYYY-MM-DD HH:mm');
 
 const loadStores = async () => {
   const res = await storeApi.list({ pageSize: 999 });
-  stores.value = res.data.data;
+  stores.value = res.data!.data;
 };
 
 const loadList = async () => {
@@ -217,8 +218,8 @@ const loadList = async () => {
       pageSize: pagination.pageSize,
       ...filters,
     });
-    list.value = res.data.data;
-    pagination.total = res.data.total;
+    list.value = res.data!.data;
+    pagination.total = res.data!.total;
   } finally {
     loading.value = false;
   }

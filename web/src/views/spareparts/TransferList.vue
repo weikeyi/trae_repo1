@@ -42,8 +42,8 @@
         <el-table-column prop="operator?.realName" label="操作人" width="90" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="TRANSFER_STATUS_TYPE[row.status]" size="small">
-              {{ TRANSFER_STATUS_LABEL[row.status] }}
+            <el-tag :type="TRANSFER_STATUS_TYPE[row.status as TransferStatus]" size="small">
+              {{ TRANSFER_STATUS_LABEL[row.status as TransferStatus] }}
             </el-tag>
           </template>
         </el-table-column>
@@ -212,8 +212,8 @@ const loadList = async () => {
       pageSize: pagination.pageSize,
       status: filters.status || undefined,
     });
-    list.value = res.data.data;
-    pagination.total = res.data.total;
+    list.value = res.data!.data;
+    pagination.total = res.data!.total;
   } finally {
     loading.value = false;
   }
@@ -262,17 +262,17 @@ const cancel = async (row: Transfer) => {
 
 const loadParts = async () => {
   const res = await sparePartApi.list({ pageSize: 999 });
-  parts.value = res.data.data;
+  parts.value = res.data!.data;
 };
 
 const loadStores = async () => {
   const res = await storeApi.list({ pageSize: 999 });
-  stores.value = res.data.data;
+  stores.value = res.data!.data;
 };
 
 const loadRequests = async () => {
   const res = await inventoryApi.listRequests({ pageSize: 999 });
-  requests.value = res.data.data;
+  requests.value = res.data!.data;
 };
 
 const openDialog = () => {
@@ -301,7 +301,7 @@ const handleSubmit = async () => {
     submitting.value = true;
     try {
       const submitData = { ...form };
-      if (!submitData.requestId) delete submitData.requestId;
+      if (!submitData.requestId) delete (submitData as any).requestId;
       await inventoryApi.createTransfer(submitData);
       ElMessage.success('调拨单已创建');
       dialogVisible.value = false;

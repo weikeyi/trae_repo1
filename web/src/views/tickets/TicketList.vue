@@ -74,15 +74,15 @@
         <el-table-column prop="description" label="故障描述" min-width="180" show-overflow-tooltip />
         <el-table-column label="紧急程度" width="90">
           <template #default="{ row }">
-            <el-tag :type="URGENCY_TYPE[row.urgency]" size="small">
-              {{ URGENCY_LABEL[row.urgency] }}
+            <el-tag :type="URGENCY_TYPE[row.urgency as UrgencyLevel]" size="small">
+              {{ URGENCY_LABEL[row.urgency as UrgencyLevel] }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="TICKET_STATUS_TYPE[row.status]" size="small">
-              {{ TICKET_STATUS_LABEL[row.status] }}
+            <el-tag :type="TICKET_STATUS_TYPE[row.status as TicketStatus]" size="small">
+              {{ TICKET_STATUS_LABEL[row.status as TicketStatus] }}
             </el-tag>
           </template>
         </el-table-column>
@@ -122,6 +122,7 @@ import type { RepairTicket, Store } from '@/types';
 import dayjs from 'dayjs';
 import { TICKET_STATUS_LABEL, TICKET_STATUS_TYPE, URGENCY_LABEL, URGENCY_TYPE } from '@/constants';
 import { useUserStore } from '@/store/user';
+import { TicketStatus, UrgencyLevel } from '@/types';
 
 const userStore = useUserStore();
 const loading = ref(false);
@@ -141,7 +142,7 @@ const formatDate = (d: string) => dayjs(d).format('YYYY-MM-DD HH:mm');
 
 const loadStores = async () => {
   const res = await storeApi.list({ pageSize: 999 });
-  stores.value = res.data.data;
+  stores.value = res.data!.data;
 };
 
 const loadList = async () => {
@@ -155,8 +156,8 @@ const loadList = async () => {
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
     });
-    list.value = res.data.data;
-    pagination.total = res.data.total;
+    list.value = res.data!.data;
+    pagination.total = res.data!.total;
   } finally {
     loading.value = false;
   }

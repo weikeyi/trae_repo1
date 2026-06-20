@@ -126,7 +126,7 @@ const adjustRules: FormRules = {
 
 const loadStores = async () => {
   const res = await storeApi.list({ pageSize: 999 });
-  stores.value = res.data.data;
+  stores.value = res.data!.data;
 };
 
 const loadList = async () => {
@@ -138,8 +138,8 @@ const loadList = async () => {
       ...filters,
       storeId: userStore.userInfo?.role === 'STORE_MANAGER' ? userStore.userInfo.storeId || undefined : filters.storeId,
     });
-    list.value = res.data.data;
-    pagination.total = res.data.total;
+    list.value = res.data!.data;
+    pagination.total = res.data!.total;
   } finally {
     loading.value = false;
   }
@@ -172,7 +172,7 @@ const handleAdjustSubmit = async () => {
     if (!valid) return;
     adjustSubmitting.value = true;
     try {
-      await inventoryApi.update(adjustingRow.value.id, adjustForm);
+      await inventoryApi.update(adjustingRow.value!.id, adjustForm);
       ElMessage.success('调整成功');
       adjustDialogVisible.value = false;
       loadList();

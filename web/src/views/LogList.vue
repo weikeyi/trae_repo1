@@ -99,8 +99,8 @@ const loadList = async () => {
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
     });
-    list.value = res.data.data;
-    pagination.total = res.data.total;
+    list.value = res.data!.data;
+    pagination.total = res.data!.total;
   } finally {
     loading.value = false;
   }
