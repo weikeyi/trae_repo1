@@ -3,11 +3,13 @@ import type {
   ApiResponse,
   SparePart,
   Inventory,
+  InventoryLog,
   SparePartRequest,
   Transfer,
   PaginatedResult,
   SparePartRequestStatus,
   TransferStatus,
+  InventoryChangeType,
 } from '@/types';
 
 export interface SparePartQuery {
@@ -42,6 +44,22 @@ export interface TransferQuery {
   fromStoreId?: number;
   toStoreId?: number;
   requestId?: number;
+}
+
+export interface InventoryLogQuery {
+  page?: number;
+  pageSize?: number;
+  sparePartId?: number;
+  storeId?: number;
+  changeType?: InventoryChangeType;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface LowStockAlertQuery {
+  page?: number;
+  pageSize?: number;
+  storeId?: number;
 }
 
 export interface SparePartInput {
@@ -138,4 +156,10 @@ export const inventoryApi = {
 
   receiveTransfer: (id: number, data?: { remark?: string }) =>
     request.post<any, ApiResponse<Transfer>>(`/inventories/transfers/${id}/receive`, data),
+
+  listLogs: (params?: InventoryLogQuery) =>
+    request.get<any, ApiResponse<PaginatedResult<InventoryLog>>>('/inventories/logs', { params }),
+
+  getLowStockAlerts: (params?: LowStockAlertQuery) =>
+    request.get<any, ApiResponse<PaginatedResult<Inventory>>>('/inventories/low-stock-alerts', { params }),
 };

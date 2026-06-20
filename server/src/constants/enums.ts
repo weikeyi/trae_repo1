@@ -70,6 +70,16 @@ export const LogAction = {
 } as const;
 export type LogAction = (typeof LogAction)[keyof typeof LogAction];
 
+export const InventoryChangeType = {
+  REQUEST_LOCK: 'REQUEST_LOCK',
+  REQUEST_RELEASE: 'REQUEST_RELEASE',
+  TRANSFER_OUT: 'TRANSFER_OUT',
+  TRANSFER_IN: 'TRANSFER_IN',
+  TRANSFER_CANCEL_RETURN: 'TRANSFER_CANCEL_RETURN',
+  ADMIN_ADJUST: 'ADMIN_ADJUST',
+} as const;
+export type InventoryChangeType = (typeof InventoryChangeType)[keyof typeof InventoryChangeType];
+
 // String(JSON) 数组辅助函数
 // 现在 schema 中字段是 String 类型，存储 JSON.stringify 后的字符串
 export const parseJsonArray = (value: unknown): string[] => {

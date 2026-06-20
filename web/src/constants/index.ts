@@ -1,4 +1,4 @@
-import type { TicketStatus, UrgencyLevel, SparePartRequestStatus, TransferStatus, Role } from '@/types';
+import type { TicketStatus, UrgencyLevel, SparePartRequestStatus, TransferStatus, Role, InventoryChangeType } from '@/types';
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: '系统管理员',
@@ -117,3 +117,21 @@ export const SPARE_PART_CATEGORIES = [
 ];
 
 export const REGIONS = ['华东', '华北', '华南', '华中', '西南', '西北', '东北', 'HQ'];
+
+export const INVENTORY_CHANGE_TYPE_LABEL: Record<InventoryChangeType, string> = {
+  REQUEST_LOCK: '申请锁定',
+  REQUEST_RELEASE: '申请释放',
+  TRANSFER_OUT: '调拨出库',
+  TRANSFER_IN: '调拨入库',
+  TRANSFER_CANCEL_RETURN: '调拨取消退回',
+  ADMIN_ADJUST: '管理员调整',
+};
+
+export const INVENTORY_CHANGE_TYPE_TYPE: Record<InventoryChangeType, 'warning' | 'success' | 'danger' | 'info' | 'primary' | ''> = {
+  REQUEST_LOCK: 'warning',
+  REQUEST_RELEASE: 'success',
+  TRANSFER_OUT: 'danger',
+  TRANSFER_IN: 'primary',
+  TRANSFER_CANCEL_RETURN: 'info',
+  ADMIN_ADJUST: '',
+};

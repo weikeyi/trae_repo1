@@ -1,10 +1,12 @@
 import { Response } from 'express';
-import { Role, SparePartRequestStatus, TransferStatus, LogAction, TicketStatus } from '../constants/enums';
+import { Role, SparePartRequestStatus, TransferStatus, LogAction, TicketStatus, InventoryChangeType } from '../constants/enums';
 import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
+import { Prisma } from '@prisma/client';
 import { success, error } from '../utils/response';
 import { getPaginationParams, buildPaginatedResult } from '../utils/pagination';
 import { logOperation } from '../services/logService';
+import { createInventoryLog } from '../services/inventoryLogService';
 
 const generateRequestNo = (): string => {
   const now = new Date();
@@ -41,7 +43,10 @@ export const listInventories = async (req: AuthRequest, res: Response): Promise<
       };
     }
     if (lowStock === 'true') {
-      where.quantity = { lte: prisma.inventory.fields.minStock };
+      const lowStockRows = await prisma.$queryRaw<{ id: number }[]>`
+        SELECT id FROM Inventory WHERE availableQty <= minStock
+      `;
+      where.id = { in: lowStockRows.map(r => r.id) };
     }
 
     const [inventories, total] = await Promise.all([
@@ -99,6 +104,20 @@ export const updateInventory = async (req: AuthRequest, res: Response): Promise<
     }
 
     const updated = await prisma.inventory.update({ where: { id }, data });
+
+    await createInventoryLog({
+      sparePartId: existing.sparePartId,
+      storeId: existing.storeId,
+      changeType: InventoryChangeType.ADMIN_ADJUST,
+      quantityBefore: existing.quantity,
+      quantityAfter: updated.quantity,
+      lockedQtyBefore: existing.lockedQty,
+      lockedQtyAfter: updated.lockedQty,
+      availableQtyBefore: existing.availableQty,
+      availableQtyAfter: updated.availableQty,
+      operatorId: req.user!.userId,
+      remark: '管理员调整库存',
+    });
 
     await logOperation({
       action: LogAction.UPDATE,
@@ -324,6 +343,23 @@ export const createSparePartRequest = async (req: AuthRequest, res: Response): P
             availableQty: { decrement: requestQty },
           },
         });
+
+        await createInventoryLog({
+          sparePartId,
+          storeId: sourceStoreId,
+          changeType: InventoryChangeType.REQUEST_LOCK,
+          quantityBefore: sourceInventory.quantity,
+          quantityAfter: sourceInventory.quantity,
+          lockedQtyBefore: sourceInventory.lockedQty,
+          lockedQtyAfter: sourceInventory.lockedQty + requestQty,
+          availableQtyBefore: sourceInventory.availableQty,
+          availableQtyAfter: sourceInventory.availableQty - requestQty,
+          relatedTicketId: ticketId,
+          relatedRequestId: result.id,
+          operatorId: req.user!.userId,
+          remark: `备件申请 ${requestNo} 锁定库存 ${requestQty}`,
+          tx,
+        });
       }
 
       if (ticket.status === TicketStatus.DIAGNOSING) {
@@ -385,6 +421,9 @@ export const updateSparePartRequest = async (req: AuthRequest, res: Response): P
       const result = await tx.sparePartRequest.update({ where: { id }, data });
 
       if (status === SparePartRequestStatus.REJECTED && existing.fromStoreId) {
+        const invBefore = await tx.inventory.findUnique({
+          where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.fromStoreId } },
+        });
         await tx.inventory.update({
           where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.fromStoreId } },
           data: {
@@ -392,10 +431,31 @@ export const updateSparePartRequest = async (req: AuthRequest, res: Response): P
             availableQty: { increment: existing.requestQty },
           },
         });
+        if (invBefore) {
+          await createInventoryLog({
+            sparePartId: existing.sparePartId,
+            storeId: existing.fromStoreId,
+            changeType: InventoryChangeType.REQUEST_RELEASE,
+            quantityBefore: invBefore.quantity,
+            quantityAfter: invBefore.quantity,
+            lockedQtyBefore: invBefore.lockedQty,
+            lockedQtyAfter: invBefore.lockedQty - existing.requestQty,
+            availableQtyBefore: invBefore.availableQty,
+            availableQtyAfter: invBefore.availableQty + existing.requestQty,
+            relatedTicketId: existing.ticketId,
+            relatedRequestId: existing.id,
+            operatorId: req.user!.userId,
+            remark: `备件申请 ${existing.requestNo} 被拒绝，释放锁定 ${existing.requestQty}`,
+            tx,
+          });
+        }
       }
 
       if (status === SparePartRequestStatus.BACKORDER) {
         if (existing.fromStoreId) {
+          const invBefore = await tx.inventory.findUnique({
+            where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.fromStoreId } },
+          });
           await tx.inventory.update({
             where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.fromStoreId } },
             data: {
@@ -403,6 +463,24 @@ export const updateSparePartRequest = async (req: AuthRequest, res: Response): P
               availableQty: { increment: existing.requestQty },
             },
           });
+          if (invBefore) {
+            await createInventoryLog({
+              sparePartId: existing.sparePartId,
+              storeId: existing.fromStoreId,
+              changeType: InventoryChangeType.REQUEST_RELEASE,
+              quantityBefore: invBefore.quantity,
+              quantityAfter: invBefore.quantity,
+              lockedQtyBefore: invBefore.lockedQty,
+              lockedQtyAfter: invBefore.lockedQty - existing.requestQty,
+              availableQtyBefore: invBefore.availableQty,
+              availableQtyAfter: invBefore.availableQty + existing.requestQty,
+              relatedTicketId: existing.ticketId,
+              relatedRequestId: existing.id,
+              operatorId: req.user!.userId,
+              remark: `备件申请 ${existing.requestNo} 转为缺货待补，释放锁定 ${existing.requestQty}`,
+              tx,
+            });
+          }
         }
       }
 
@@ -453,6 +531,9 @@ export const cancelSparePartRequest = async (req: AuthRequest, res: Response): P
       if (existing.fromStoreId && existing.status !== SparePartRequestStatus.REJECTED) {
         const releaseQty = existing.requestQty - existing.fulfilledQty;
         if (releaseQty > 0) {
+          const invBefore = await tx.inventory.findUnique({
+            where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.fromStoreId } },
+          });
           await tx.inventory.update({
             where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.fromStoreId } },
             data: {
@@ -460,6 +541,24 @@ export const cancelSparePartRequest = async (req: AuthRequest, res: Response): P
               availableQty: { increment: releaseQty },
             },
           });
+          if (invBefore) {
+            await createInventoryLog({
+              sparePartId: existing.sparePartId,
+              storeId: existing.fromStoreId,
+              changeType: InventoryChangeType.REQUEST_RELEASE,
+              quantityBefore: invBefore.quantity,
+              quantityAfter: invBefore.quantity,
+              lockedQtyBefore: invBefore.lockedQty,
+              lockedQtyAfter: invBefore.lockedQty - releaseQty,
+              availableQtyBefore: invBefore.availableQty,
+              availableQtyAfter: invBefore.availableQty + releaseQty,
+              relatedTicketId: existing.ticketId,
+              relatedRequestId: existing.id,
+              operatorId: req.user!.userId,
+              remark: `取消备件申请 ${existing.requestNo}，释放锁定 ${releaseQty}`,
+              tx,
+            });
+          }
         }
       }
     });
@@ -557,6 +656,23 @@ export const createTransfer = async (req: AuthRequest, res: Response): Promise<v
         },
       });
 
+      await createInventoryLog({
+        sparePartId,
+        storeId: fromStoreId,
+        changeType: InventoryChangeType.TRANSFER_OUT,
+        quantityBefore: sourceInventory.quantity,
+        quantityAfter: sourceInventory.quantity - quantity,
+        lockedQtyBefore: sourceInventory.lockedQty,
+        lockedQtyAfter: sourceInventory.lockedQty - Math.min(sourceInventory.lockedQty, quantity),
+        availableQtyBefore: sourceInventory.availableQty,
+        availableQtyAfter: sourceInventory.availableQty - Math.max(0, quantity - sourceInventory.lockedQty),
+        relatedRequestId: requestId,
+        relatedTransferId: result.id,
+        operatorId: req.user!.userId,
+        remark: `调拨出库 ${transferNo}，数量 ${quantity}`,
+        tx,
+      });
+
       return result;
     });
 
@@ -597,6 +713,9 @@ export const updateTransfer = async (req: AuthRequest, res: Response): Promise<v
         data.shippedAt = new Date();
       }
       if (status === TransferStatus.CANCELLED) {
+        const invBefore = await tx.inventory.findUnique({
+          where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.fromStoreId } },
+        });
         await tx.inventory.upsert({
           where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.fromStoreId } },
           create: {
@@ -610,6 +729,24 @@ export const updateTransfer = async (req: AuthRequest, res: Response): Promise<v
             availableQty: { increment: existing.quantity },
           },
         });
+        if (invBefore) {
+          await createInventoryLog({
+            sparePartId: existing.sparePartId,
+            storeId: existing.fromStoreId,
+            changeType: InventoryChangeType.TRANSFER_CANCEL_RETURN,
+            quantityBefore: invBefore.quantity,
+            quantityAfter: invBefore.quantity + existing.quantity,
+            lockedQtyBefore: invBefore.lockedQty,
+            lockedQtyAfter: invBefore.lockedQty,
+            availableQtyBefore: invBefore.availableQty,
+            availableQtyAfter: invBefore.availableQty + existing.quantity,
+            relatedTransferId: existing.id,
+            relatedRequestId: existing.requestId,
+            operatorId: req.user!.userId,
+            remark: `调拨单 ${existing.transferNo} 取消，退回库存 ${existing.quantity}`,
+            tx,
+          });
+        }
       }
       return tx.transfer.update({ where: { id }, data });
     });
@@ -654,6 +791,9 @@ export const receiveTransfer = async (req: AuthRequest, res: Response): Promise<
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      const invBefore = await tx.inventory.findUnique({
+        where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.toStoreId } },
+      });
       await tx.inventory.upsert({
         where: { sparePartId_storeId: { sparePartId: existing.sparePartId, storeId: existing.toStoreId } },
         create: {
@@ -689,6 +829,23 @@ export const receiveTransfer = async (req: AuthRequest, res: Response): Promise<
         }
       }
 
+      await createInventoryLog({
+        sparePartId: existing.sparePartId,
+        storeId: existing.toStoreId,
+        changeType: InventoryChangeType.TRANSFER_IN,
+        quantityBefore: invBefore ? invBefore.quantity : 0,
+        quantityAfter: (invBefore ? invBefore.quantity : 0) + existing.quantity,
+        lockedQtyBefore: invBefore ? invBefore.lockedQty : 0,
+        lockedQtyAfter: invBefore ? invBefore.lockedQty : 0,
+        availableQtyBefore: invBefore ? invBefore.availableQty : 0,
+        availableQtyAfter: (invBefore ? invBefore.availableQty : 0) + existing.quantity,
+        relatedRequestId: existing.requestId,
+        relatedTransferId: existing.id,
+        operatorId: req.user!.userId,
+        remark: `调拨收货 ${existing.transferNo}，入库 ${existing.quantity}`,
+        tx,
+      });
+
       return result;
     });
 
@@ -704,5 +861,79 @@ export const receiveTransfer = async (req: AuthRequest, res: Response): Promise<
     success(res, updated, '收货成功');
   } catch (err: any) {
     error(res, `收货失败: ${err.message}`, 500);
+  }
+};
+
+export const listInventoryLogs = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { page, pageSize, skip, take } = getPaginationParams(req);
+    const { sparePartId, storeId, changeType, startDate, endDate } = req.query;
+
+    const where: any = {};
+    if (sparePartId) where.sparePartId = parseInt(sparePartId as string, 10);
+    if (storeId) where.storeId = parseInt(storeId as string, 10);
+    if (changeType) where.changeType = changeType as string;
+    if (req.user?.role === Role.STORE_MANAGER && req.user.storeId) {
+      where.storeId = req.user.storeId;
+    }
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate as string);
+      if (endDate) where.createdAt.lte = new Date(endDate as string);
+    }
+
+    const [logs, total] = await Promise.all([
+      prisma.inventoryLog.findMany({
+        where,
+        skip,
+        take,
+        include: {
+          sparePart: true,
+          store: true,
+          operator: { select: { id: true, realName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.inventoryLog.count({ where }),
+    ]);
+
+    const result = buildPaginatedResult(logs, total, page, pageSize);
+    success(res, result);
+  } catch (err: any) {
+    error(res, `获取库存流水失败: ${err.message}`, 500);
+  }
+};
+
+export const getLowStockAlerts = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { page, pageSize, skip, take } = getPaginationParams(req);
+    const { storeId } = req.query;
+
+    const lowStockRows = await prisma.$queryRaw<{ id: number }[]>`
+      SELECT id FROM Inventory WHERE availableQty <= minStock
+    `;
+    const where: any = {
+      id: { in: lowStockRows.map(r => r.id) },
+    };
+    if (storeId) where.storeId = parseInt(storeId as string, 10);
+    if (req.user?.role === Role.STORE_MANAGER && req.user.storeId) {
+      where.storeId = req.user.storeId;
+    }
+
+    const [alerts, total] = await Promise.all([
+      prisma.inventory.findMany({
+        where,
+        skip,
+        take,
+        include: { sparePart: true, store: true },
+        orderBy: { availableQty: 'asc' },
+      }),
+      prisma.inventory.count({ where }),
+    ]);
+
+    const result = buildPaginatedResult(alerts, total, page, pageSize);
+    success(res, result);
+  } catch (err: any) {
+    error(res, `获取低库存预警失败: ${err.message}`, 500);
   }
 };

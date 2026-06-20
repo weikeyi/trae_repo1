@@ -29,6 +29,14 @@ export type SparePartRequestStatus =
 
 export type TransferStatus = 'PENDING' | 'IN_TRANSIT' | 'RECEIVED' | 'CANCELLED';
 
+export type InventoryChangeType =
+  | 'REQUEST_LOCK'
+  | 'REQUEST_RELEASE'
+  | 'TRANSFER_OUT'
+  | 'TRANSFER_IN'
+  | 'TRANSFER_CANCEL_RETURN'
+  | 'ADMIN_ADJUST';
+
 export interface User {
   id: number;
   username: string;
@@ -198,6 +206,28 @@ export interface Transfer {
   remark?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface InventoryLog {
+  id: number;
+  sparePartId: number;
+  sparePart?: SparePart;
+  storeId: number;
+  store?: Store;
+  changeType: InventoryChangeType;
+  quantityBefore: number;
+  quantityAfter: number;
+  lockedQtyBefore: number;
+  lockedQtyAfter: number;
+  availableQtyBefore: number;
+  availableQtyAfter: number;
+  relatedTicketId?: number | null;
+  relatedRequestId?: number | null;
+  relatedTransferId?: number | null;
+  operatorId: number;
+  operator?: { id: number; realName: string };
+  remark?: string | null;
+  createdAt: string;
 }
 
 export interface SlaRule {

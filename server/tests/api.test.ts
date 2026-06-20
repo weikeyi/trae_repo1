@@ -23,6 +23,7 @@ beforeAll(async () => {
   await prisma.statusHistory.deleteMany({});
   await prisma.repairTicket.deleteMany({});
   await prisma.operationLog.deleteMany({});
+  await prisma.inventoryLog.deleteMany({});
   await prisma.inventory.deleteMany({});
   await prisma.sparePart.deleteMany({});
   await prisma.equipment.deleteMany({});
@@ -540,5 +541,489 @@ describe('Spare Part Request Auto-Select', () => {
 
     expect(req2Res.status).toBe(201);
     expect(req2Res.body.data.status).toBe('BACKORDER');
+  });
+});
+
+describe('Inventory Log & Low Stock Alert', () => {
+  let logTestPartId: number;
+  let logTestInvId: number;
+
+  beforeAll(async () => {
+    await prisma.technicianProfile.update({
+      where: { userId: techId },
+      data: { currentLoad: 0 },
+    });
+
+    const part = await prisma.sparePart.upsert({
+      where: { partCode: 'LOG-TEST-SP' },
+      update: {},
+      create: {
+        partCode: 'LOG-TEST-SP',
+        name: '流水测试备件',
+        category: '测试',
+        unit: '个',
+      },
+    });
+    logTestPartId = part.id;
+
+    const inv = await prisma.inventory.upsert({
+      where: { sparePartId_storeId: { sparePartId: part.id, storeId: testStoreId } },
+      update: { quantity: 10, lockedQty: 0, availableQty: 10, minStock: 3 },
+      create: {
+        sparePartId: part.id,
+        storeId: testStoreId,
+        quantity: 10,
+        lockedQty: 0,
+        availableQty: 10,
+        minStock: 3,
+      },
+    });
+    logTestInvId = inv.id;
+  });
+
+  it('should record inventory log when spare part request locks inventory', async () => {
+    const ticket = await prisma.repairTicket.create({
+      data: {
+        ticketNo: `WO-LOG-${Date.now()}`,
+        equipmentId: testEquipmentId,
+        storeId: testStoreId,
+        faultType: '空调维修',
+        description: '测试库存流水',
+        imageUrls: '[]',
+        urgency: UrgencyLevel.MEDIUM,
+        status: TicketStatus.DIAGNOSING,
+        createdById: storeId,
+        assignedToId: techId,
+      },
+    });
+
+    await prisma.statusHistory.createMany({
+      data: [
+        { ticketId: ticket.id, toStatus: TicketStatus.CREATED, operatorId: storeId },
+        { ticketId: ticket.id, fromStatus: TicketStatus.CREATED, toStatus: TicketStatus.ASSIGNED, operatorId: adminId },
+        { ticketId: ticket.id, fromStatus: TicketStatus.ASSIGNED, toStatus: TicketStatus.DIAGNOSING, operatorId: techId },
+      ],
+    });
+
+    const reqRes = await request(app)
+      .post('/api/inventories/requests')
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({
+        ticketId: ticket.id,
+        sparePartId: logTestPartId,
+        requestQty: 3,
+        fromStoreId: testStoreId,
+      });
+
+    expect(reqRes.status).toBe(201);
+
+    const logs = await prisma.inventoryLog.findMany({
+      where: { sparePartId: logTestPartId, storeId: testStoreId, changeType: 'REQUEST_LOCK' },
+    });
+    expect(logs.length).toBeGreaterThanOrEqual(1);
+    const log = logs[logs.length - 1];
+    expect(log.quantityBefore).toBe(10);
+    expect(log.quantityAfter).toBe(10);
+    expect(log.lockedQtyBefore).toBe(0);
+    expect(log.lockedQtyAfter).toBe(3);
+    expect(log.availableQtyBefore).toBe(10);
+    expect(log.availableQtyAfter).toBe(7);
+    expect(log.relatedRequestId).toBe(reqRes.body.data.id);
+  });
+
+  it('should record inventory log when spare part request is cancelled (release)', async () => {
+    const existingInv = await prisma.inventory.findUnique({ where: { id: logTestInvId } });
+    const lockedBefore = existingInv!.lockedQty;
+
+    const ticket = await prisma.repairTicket.create({
+      data: {
+        ticketNo: `WO-LOG-CANCEL-${Date.now()}`,
+        equipmentId: testEquipment2Id,
+        storeId: testStoreId,
+        faultType: '漏水',
+        description: '测试取消流水',
+        imageUrls: '[]',
+        urgency: UrgencyLevel.MEDIUM,
+        status: TicketStatus.DIAGNOSING,
+        createdById: storeId,
+        assignedToId: techId,
+      },
+    });
+
+    await prisma.statusHistory.createMany({
+      data: [
+        { ticketId: ticket.id, toStatus: TicketStatus.CREATED, operatorId: storeId },
+        { ticketId: ticket.id, fromStatus: TicketStatus.CREATED, toStatus: TicketStatus.ASSIGNED, operatorId: adminId },
+        { ticketId: ticket.id, fromStatus: TicketStatus.ASSIGNED, toStatus: TicketStatus.DIAGNOSING, operatorId: techId },
+      ],
+    });
+
+    const reqRes = await request(app)
+      .post('/api/inventories/requests')
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({
+        ticketId: ticket.id,
+        sparePartId: logTestPartId,
+        requestQty: 2,
+        fromStoreId: testStoreId,
+      });
+    expect(reqRes.status).toBe(201);
+
+    const cancelRes = await request(app)
+      .post(`/api/inventories/requests/${reqRes.body.data.id}/cancel`)
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({ remark: '测试取消' });
+    expect(cancelRes.status).toBe(200);
+
+    const logs = await prisma.inventoryLog.findMany({
+      where: { sparePartId: logTestPartId, storeId: testStoreId, changeType: 'REQUEST_RELEASE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(logs.length).toBeGreaterThanOrEqual(1);
+    const log = logs[0];
+    expect(log.lockedQtyAfter).toBe(lockedBefore);
+    expect(log.availableQtyAfter).toBeGreaterThan(log.availableQtyBefore);
+  });
+
+  it('should record inventory log when admin adjusts inventory', async () => {
+    const invBefore = await prisma.inventory.findUnique({ where: { id: logTestInvId } });
+
+    const res = await request(app)
+      .put(`/api/inventories/${logTestInvId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ quantity: 15, minStock: 3 });
+
+    expect(res.status).toBe(200);
+
+    const logs = await prisma.inventoryLog.findMany({
+      where: { sparePartId: logTestPartId, storeId: testStoreId, changeType: 'ADMIN_ADJUST' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(logs.length).toBeGreaterThanOrEqual(1);
+    const log = logs[0];
+    expect(log.quantityBefore).toBe(invBefore!.quantity);
+    expect(log.quantityAfter).toBe(15);
+    expect(log.availableQtyBefore).toBe(invBefore!.availableQty);
+  });
+
+  it('should return inventory logs via API with filters', async () => {
+    const res = await request(app)
+      .get('/api/inventories/logs')
+      .query({ sparePartId: logTestPartId, changeType: 'REQUEST_LOCK', pageSize: 10 })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.data.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.data.data[0].changeType).toBe('REQUEST_LOCK');
+  });
+
+  it('should return inventory logs with pagination', async () => {
+    const res = await request(app)
+      .get('/api/inventories/logs')
+      .query({ sparePartId: logTestPartId, page: 1, pageSize: 5 })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.total).toBeGreaterThan(0);
+  });
+
+  it('should return low stock alerts', async () => {
+    const lowPart = await prisma.sparePart.upsert({
+      where: { partCode: 'LOW-STOCK-SP' },
+      update: {},
+      create: {
+        partCode: 'LOW-STOCK-SP',
+        name: '低库存备件',
+        category: '测试',
+        unit: '个',
+      },
+    });
+
+    await prisma.inventory.upsert({
+      where: { sparePartId_storeId: { sparePartId: lowPart.id, storeId: testStoreId } },
+      update: { quantity: 1, lockedQty: 0, availableQty: 1, minStock: 5 },
+      create: {
+        sparePartId: lowPart.id,
+        storeId: testStoreId,
+        quantity: 1,
+        lockedQty: 0,
+        availableQty: 1,
+        minStock: 5,
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/inventories/low-stock-alerts')
+      .query({ pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.data.length).toBeGreaterThanOrEqual(1);
+
+    const lowItem = res.body.data.data.find((i: any) => i.sparePartId === lowPart.id);
+    expect(lowItem).toBeDefined();
+    expect(lowItem.availableQty).toBeLessThanOrEqual(lowItem.minStock);
+  });
+
+  it('should restrict store manager to their own store in logs and alerts', async () => {
+    const logsRes = await request(app)
+      .get('/api/inventories/logs')
+      .set('Authorization', `Bearer ${storeToken}`);
+
+    expect(logsRes.status).toBe(200);
+    expect(logsRes.body.success).toBe(true);
+    if (logsRes.body.data.data.length > 0) {
+      logsRes.body.data.data.forEach((log: any) => {
+        expect(log.storeId).toBe(testStoreId);
+      });
+    }
+
+    const alertsRes = await request(app)
+      .get('/api/inventories/low-stock-alerts')
+      .set('Authorization', `Bearer ${storeToken}`);
+
+    expect(alertsRes.status).toBe(200);
+    expect(alertsRes.body.success).toBe(true);
+    if (alertsRes.body.data.data.length > 0) {
+      alertsRes.body.data.data.forEach((item: any) => {
+        expect(item.storeId).toBe(testStoreId);
+      });
+    }
+  });
+
+  it('should record TRANSFER_OUT log when creating a transfer', async () => {
+    const transferPart = await prisma.sparePart.upsert({
+      where: { partCode: 'TRF-LOG-SP' },
+      update: {},
+      create: {
+        partCode: 'TRF-LOG-SP',
+        name: '调拨流水备件',
+        category: '测试',
+        unit: '个',
+      },
+    });
+
+    const destStore = await prisma.store.upsert({
+      where: { storeCode: 'DEST-STORE' },
+      update: {},
+      create: {
+        storeCode: 'DEST-STORE',
+        name: '调拨目标门店',
+        address: '目标地址',
+        region: '华东',
+      },
+    });
+
+    await prisma.inventory.upsert({
+      where: { sparePartId_storeId: { sparePartId: transferPart.id, storeId: testStoreId } },
+      update: { quantity: 20, lockedQty: 0, availableQty: 20, minStock: 2 },
+      create: {
+        sparePartId: transferPart.id,
+        storeId: testStoreId,
+        quantity: 20,
+        lockedQty: 0,
+        availableQty: 20,
+        minStock: 2,
+      },
+    });
+
+    const ticket = await prisma.repairTicket.create({
+      data: {
+        ticketNo: `WO-TRF-LOG-${Date.now()}`,
+        equipmentId: testEquipmentId,
+        storeId: destStore.id,
+        faultType: '空调维修',
+        description: '测试调拨流水',
+        imageUrls: '[]',
+        urgency: UrgencyLevel.MEDIUM,
+        status: TicketStatus.WAITING_SPARE_PARTS,
+        createdById: storeId,
+        assignedToId: techId,
+      },
+    });
+
+    const spr = await prisma.sparePartRequest.create({
+      data: {
+        requestNo: `SPR-TRF-${Date.now()}`,
+        ticketId: ticket.id,
+        sparePartId: transferPart.id,
+        requestQty: 5,
+        fromStoreId: testStoreId,
+        toStoreId: destStore.id,
+        requestedById: techId,
+        status: 'PENDING',
+      },
+    });
+
+    const trfRes = await request(app)
+      .post('/api/inventories/transfers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        requestId: spr.id,
+        sparePartId: transferPart.id,
+        fromStoreId: testStoreId,
+        toStoreId: destStore.id,
+        quantity: 5,
+      });
+
+    expect(trfRes.status).toBe(201);
+
+    const logs = await prisma.inventoryLog.findMany({
+      where: { sparePartId: transferPart.id, storeId: testStoreId, changeType: 'TRANSFER_OUT' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(logs.length).toBeGreaterThanOrEqual(1);
+    const log = logs[0];
+    expect(log.quantityBefore).toBe(20);
+    expect(log.quantityAfter).toBe(15);
+    expect(log.availableQtyBefore).toBe(20);
+    expect(log.availableQtyAfter).toBe(15);
+    expect(log.relatedTransferId).toBe(trfRes.body.data.id);
+    expect(log.relatedRequestId).toBe(spr.id);
+  });
+
+  it('should record TRANSFER_IN log when receiving a transfer', async () => {
+    const transferPart = await prisma.sparePart.findUnique({ where: { partCode: 'TRF-LOG-SP' } });
+    const destStore = await prisma.store.findUnique({ where: { storeCode: 'DEST-STORE' } });
+
+    const pendingTransfer = await prisma.transfer.findFirst({
+      where: { sparePartId: transferPart!.id, fromStoreId: testStoreId, toStoreId: destStore!.id, status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(pendingTransfer).not.toBeNull();
+
+    await request(app)
+      .put(`/api/inventories/transfers/${pendingTransfer!.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'IN_TRANSIT' });
+
+    const invBefore = await prisma.inventory.findUnique({
+      where: { sparePartId_storeId: { sparePartId: transferPart!.id, storeId: destStore!.id } },
+    });
+
+    const receiveRes = await request(app)
+      .post(`/api/inventories/transfers/${pendingTransfer!.id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ remark: '收到调拨' });
+
+    expect(receiveRes.status).toBe(200);
+
+    const logs = await prisma.inventoryLog.findMany({
+      where: { sparePartId: transferPart!.id, storeId: destStore!.id, changeType: 'TRANSFER_IN' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(logs.length).toBeGreaterThanOrEqual(1);
+    const log = logs[0];
+    expect(log.quantityBefore).toBe(invBefore ? invBefore.quantity : 0);
+    expect(log.quantityAfter).toBe((invBefore ? invBefore.quantity : 0) + 5);
+    expect(log.relatedTransferId).toBe(pendingTransfer!.id);
+  });
+
+  it('should record TRANSFER_CANCEL_RETURN log when cancelling a transfer', async () => {
+    const cancelPart = await prisma.sparePart.upsert({
+      where: { partCode: 'CANCEL-TRF-SP' },
+      update: {},
+      create: {
+        partCode: 'CANCEL-TRF-SP',
+        name: '取消调拨备件',
+        category: '测试',
+        unit: '个',
+      },
+    });
+
+    const destStore = await prisma.store.findUnique({ where: { storeCode: 'DEST-STORE' } });
+
+    await prisma.inventory.upsert({
+      where: { sparePartId_storeId: { sparePartId: cancelPart.id, storeId: testStoreId } },
+      update: { quantity: 10, lockedQty: 0, availableQty: 10, minStock: 2 },
+      create: {
+        sparePartId: cancelPart.id,
+        storeId: testStoreId,
+        quantity: 10,
+        lockedQty: 0,
+        availableQty: 10,
+        minStock: 2,
+      },
+    });
+
+    const ticket = await prisma.repairTicket.create({
+      data: {
+        ticketNo: `WO-CANCEL-TRF-${Date.now()}`,
+        equipmentId: testEquipmentId,
+        storeId: destStore!.id,
+        faultType: '电路故障',
+        description: '测试取消调拨流水',
+        imageUrls: '[]',
+        urgency: UrgencyLevel.MEDIUM,
+        status: TicketStatus.WAITING_SPARE_PARTS,
+        createdById: storeId,
+        assignedToId: techId,
+      },
+    });
+
+    const spr = await prisma.sparePartRequest.create({
+      data: {
+        requestNo: `SPR-CANCEL-TRF-${Date.now()}`,
+        ticketId: ticket.id,
+        sparePartId: cancelPart.id,
+        requestQty: 3,
+        fromStoreId: testStoreId,
+        toStoreId: destStore!.id,
+        requestedById: techId,
+        status: 'PENDING',
+      },
+    });
+
+    const trfRes = await request(app)
+      .post('/api/inventories/transfers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        requestId: spr.id,
+        sparePartId: cancelPart.id,
+        fromStoreId: testStoreId,
+        toStoreId: destStore!.id,
+        quantity: 3,
+      });
+    expect(trfRes.status).toBe(201);
+
+    const invBeforeCancel = await prisma.inventory.findUnique({
+      where: { sparePartId_storeId: { sparePartId: cancelPart.id, storeId: testStoreId } },
+    });
+
+    const cancelRes = await request(app)
+      .put(`/api/inventories/transfers/${trfRes.body.data.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'CANCELLED' });
+    expect(cancelRes.status).toBe(200);
+
+    const logs = await prisma.inventoryLog.findMany({
+      where: { sparePartId: cancelPart.id, storeId: testStoreId, changeType: 'TRANSFER_CANCEL_RETURN' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(logs.length).toBeGreaterThanOrEqual(1);
+    const log = logs[0];
+    expect(log.quantityBefore).toBe(invBeforeCancel!.quantity);
+    expect(log.quantityAfter).toBe(invBeforeCancel!.quantity + 3);
+    expect(log.availableQtyBefore).toBe(invBeforeCancel!.availableQty);
+    expect(log.availableQtyAfter).toBe(invBeforeCancel!.availableQty + 3);
+    expect(log.relatedTransferId).toBe(trfRes.body.data.id);
+  });
+
+  it('should filter inventory logs by date range', async () => {
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 86400000).toISOString();
+    const tomorrow = new Date(now.getTime() + 86400000).toISOString();
+
+    const res = await request(app)
+      .get('/api/inventories/logs')
+      .query({ startDate: yesterday, endDate: tomorrow, pageSize: 10 })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.total).toBeGreaterThanOrEqual(1);
   });
 });

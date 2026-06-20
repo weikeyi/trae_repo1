@@ -34,6 +34,7 @@ model User {
   requestedParts      SparePartRequest[] @relation("Requester")
   approvedParts       SparePartRequest[] @relation("Approver")
   operatedTransfers   Transfer[]
+  inventoryLogs       InventoryLog[]
 }
 
 model TechnicianProfile {
@@ -71,6 +72,7 @@ model Store {
   sparePartRequestsTo     SparePartRequest[] @relation("ToStoreTransfers")
   transfersFrom           Transfer[] @relation("TransferFromStore")
   transfersTo             Transfer[] @relation("TransferToStore")
+  inventoryLogs           InventoryLog[]
 }
 
 model Equipment {
@@ -165,6 +167,7 @@ model SparePart {
   inventories             Inventory[]
   sparePartRequests       SparePartRequest[]
   transfers               Transfer[]
+  inventoryLogs           InventoryLog[]
 }
 
 model Inventory {
@@ -228,6 +231,28 @@ model Transfer {
   remark        String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model InventoryLog {
+  id                  Int       @id @default(autoincrement())
+  sparePartId         Int
+  sparePart           SparePart @relation(fields: [sparePartId], references: [id])
+  storeId             Int
+  store               Store     @relation(fields: [storeId], references: [id])
+  changeType          String
+  quantityBefore      Int
+  quantityAfter       Int
+  lockedQtyBefore     Int
+  lockedQtyAfter      Int
+  availableQtyBefore  Int
+  availableQtyAfter   Int
+  relatedTicketId     Int?
+  relatedRequestId    Int?
+  relatedTransferId   Int?
+  operatorId          Int
+  operator            User      @relation(fields: [operatorId], references: [id])
+  remark              String?
+  createdAt           DateTime  @default(now())
 }
 
 model OperationLog {

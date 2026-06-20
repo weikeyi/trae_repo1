@@ -13,6 +13,8 @@ import {
   createTransfer,
   updateTransfer,
   receiveTransfer,
+  listInventoryLogs,
+  getLowStockAlerts,
 } from '../controllers/inventoryController';
 import { authenticate } from '../middleware/auth';
 import { requireAdmin, requireTechnicianOrAdmin } from '../middleware/permission';
@@ -44,6 +46,10 @@ router.get('/transfers', listTransfers);
 router.post('/transfers', requireAdmin, validate(createTransferSchema), createTransfer);
 router.put('/transfers/:id', requireAdmin, validate(updateTransferSchema), updateTransfer);
 router.post('/transfers/:id/receive', receiveTransfer);
+
+// ===== 库存流水与低库存预警 =====
+router.get('/logs', listInventoryLogs);
+router.get('/low-stock-alerts', getLowStockAlerts);
 
 // ===== 库存 CRUD（动态路由 /:id 放最后）=====
 router.get('/', listInventories);
