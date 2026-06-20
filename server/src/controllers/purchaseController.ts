@@ -126,11 +126,19 @@ export const generateRestockSuggestions = async (req: AuthRequest, res: Response
         where: {
           sparePartId: inv.sparePartId,
           storeId: inv.storeId,
-          changeType: InventoryChangeType.TRANSFER_OUT,
+          changeType: { in: [InventoryChangeType.REQUEST_LOCK, InventoryChangeType.TRANSFER_OUT] },
           createdAt: { gte: thirtyDaysAgo },
         },
       });
-      const consumption30d = consumptionLogs.reduce((sum, l) => sum + Math.max(0, l.quantityBefore - l.quantityAfter), 0);
+      const consumption30d = consumptionLogs.reduce((sum, l) => {
+        if (l.changeType === InventoryChangeType.TRANSFER_OUT) {
+          return sum + Math.max(0, l.quantityBefore - l.quantityAfter);
+        }
+        if (l.changeType === InventoryChangeType.REQUEST_LOCK) {
+          return sum + Math.max(0, l.availableQtyBefore - l.availableQtyAfter);
+        }
+        return sum;
+      }, 0);
       const netConsumption = Math.max(0, consumption30d);
 
       const safetyStock = Math.max(inv.minStock, Math.ceil(netConsumption * 0.3));

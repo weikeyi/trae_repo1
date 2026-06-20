@@ -1316,6 +1316,86 @@ describe('Purchase & Restock Module', () => {
         expect(s.storeId).toBe(testStore2Id);
       });
     });
+
+    it('should forbid technician from generating restock suggestions', async () => {
+      const res = await request(app)
+        .post('/api/purchase/restock-suggestions/generate')
+        .send({ force: true })
+        .set('Authorization', `Bearer ${techToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('should forbid technician from dismissing restock suggestions', async () => {
+      const listRes = await request(app)
+        .get('/api/purchase/restock-suggestions')
+        .query({ status: 'PENDING', storeId: testStoreId, pageSize: 5 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      const target = listRes.body.data.data[0];
+      if (!target) return;
+
+      const dismissRes = await request(app)
+        .post(`/api/purchase/restock-suggestions/${target.id}/dismiss`)
+        .set('Authorization', `Bearer ${techToken}`);
+      expect(dismissRes.status).toBe(403);
+    });
+
+    it('should count REQUEST_LOCK consumption in restock suggestions', async () => {
+      const lockPart = await prisma.sparePart.upsert({
+        where: { partCode: 'LOCK-CONSUME-TEST' },
+        update: {},
+        create: { partCode: 'LOCK-CONSUME-TEST', name: '锁定消耗测试件', category: '测试', unit: '个' },
+      });
+      const lockStore = await prisma.store.upsert({
+        where: { storeCode: 'LOCKTEST' },
+        update: {},
+        create: { storeCode: 'LOCKTEST', name: '锁定测试门店', address: '测试', region: '测试' },
+      });
+      await prisma.inventory.upsert({
+        where: { sparePartId_storeId: { sparePartId: lockPart.id, storeId: lockStore.id } },
+        update: { quantity: 100, availableQty: 80, lockedQty: 20, minStock: 10 },
+        create: { sparePartId: lockPart.id, storeId: lockStore.id, quantity: 100, availableQty: 80, lockedQty: 20, minStock: 10 },
+      });
+      await prisma.inventoryLog.create({
+        data: {
+          sparePartId: lockPart.id,
+          storeId: lockStore.id,
+          changeType: 'REQUEST_LOCK',
+          quantityBefore: 100,
+          quantityAfter: 100,
+          lockedQtyBefore: 0,
+          lockedQtyAfter: 20,
+          availableQtyBefore: 100,
+          availableQtyAfter: 80,
+          operatorId: adminId,
+        },
+      });
+      await prisma.inventoryLog.create({
+        data: {
+          sparePartId: lockPart.id,
+          storeId: lockStore.id,
+          changeType: 'TRANSFER_OUT',
+          quantityBefore: 100,
+          quantityAfter: 90,
+          lockedQtyBefore: 20,
+          lockedQtyAfter: 10,
+          availableQtyBefore: 80,
+          availableQtyAfter: 70,
+          operatorId: adminId,
+        },
+      });
+
+      const res = await request(app)
+        .post('/api/purchase/restock-suggestions/generate')
+        .send({ storeId: lockStore.id, force: true })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+
+      const suggestion = await prisma.restockSuggestion.findFirst({
+        where: { sparePartId: lockPart.id, storeId: lockStore.id, status: 'PENDING' },
+      });
+      expect(suggestion).toBeDefined();
+      expect(suggestion!.consumption30d).toBeGreaterThanOrEqual(30);
+    });
   });
 
   describe('Purchase Plan Flow', () => {

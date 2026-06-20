@@ -112,6 +112,7 @@ async function main() {
     },
   });
 
+  await prisma.technicianProfile.deleteMany({});
   const tech1 = await prisma.user.upsert({
     where: { username: 'tech1' },
     update: {},
@@ -131,6 +132,16 @@ async function main() {
       },
     },
   });
+  if (!await prisma.technicianProfile.findUnique({ where: { userId: tech1.id } })) {
+    await prisma.technicianProfile.create({
+      data: {
+        userId: tech1.id,
+        skills: toJsonArray(['空调维修', '制冷设备', '电器维修']),
+        regions: toJsonArray(['华东']),
+        maxLoad: 5,
+      },
+    });
+  }
 
   const tech2 = await prisma.user.upsert({
     where: { username: 'tech2' },
@@ -151,6 +162,16 @@ async function main() {
       },
     },
   });
+  if (!await prisma.technicianProfile.findUnique({ where: { userId: tech2.id } })) {
+    await prisma.technicianProfile.create({
+      data: {
+        userId: tech2.id,
+        skills: toJsonArray(['空调维修', '暖通设备']),
+        regions: toJsonArray(['华东', '华北']),
+        maxLoad: 4,
+      },
+    });
+  }
 
   const tech3 = await prisma.user.upsert({
     where: { username: 'tech3' },
@@ -171,6 +192,16 @@ async function main() {
       },
     },
   });
+  if (!await prisma.technicianProfile.findUnique({ where: { userId: tech3.id } })) {
+    await prisma.technicianProfile.create({
+      data: {
+        userId: tech3.id,
+        skills: toJsonArray(['电气维修', '电路检修']),
+        regions: toJsonArray(['华南']),
+        maxLoad: 6,
+      },
+    });
+  }
 
   await prisma.purchaseReceiptItem.deleteMany({});
   await prisma.purchaseReceipt.deleteMany({});
@@ -186,6 +217,7 @@ async function main() {
   await prisma.inventory.deleteMany({});
   await prisma.equipment.deleteMany({});
   await prisma.sparePart.deleteMany({});
+
   const equipments = [
     { equipmentCode: 'EQ-SH001-001', name: '中央空调机组1号', model: '格力GMV-500', category: '空调设备', storeId: store1.id, status: 'NORMAL', description: '门店主空调机组' },
     { equipmentCode: 'EQ-SH001-002', name: '冷库制冷机组', model: '比泽尔4G-20.2', category: '制冷设备', storeId: store1.id, status: 'NORMAL', description: '生鲜区冷库' },
@@ -197,7 +229,11 @@ async function main() {
   ];
 
   for (const eq of equipments) {
-    await prisma.equipment.create({ data: eq });
+    await prisma.equipment.upsert({
+      where: { equipmentCode: eq.equipmentCode },
+      update: { name: eq.name, model: eq.model, category: eq.category, storeId: eq.storeId, status: eq.status, description: eq.description },
+      create: eq,
+    });
   }
 
   await prisma.slaRule.deleteMany({});
@@ -209,7 +245,11 @@ async function main() {
   ];
 
   for (const sla of slaRules) {
-    await prisma.slaRule.create({ data: sla });
+    await prisma.slaRule.upsert({
+      where: { urgency: sla.urgency },
+      update: {},
+      create: sla,
+    });
   }
 
   const spareParts = [
@@ -226,7 +266,11 @@ async function main() {
 
   const createdParts: any[] = [];
   for (const sp of spareParts) {
-    const p = await prisma.sparePart.create({ data: sp });
+    const p = await prisma.sparePart.upsert({
+      where: { partCode: sp.partCode },
+      update: {},
+      create: sp,
+    });
     createdParts.push(p);
   }
 
@@ -242,8 +286,10 @@ async function main() {
     for (const [code, qty] of Object.entries(inv.stock as Record<string, number>)) {
       const part = createdParts.find((p) => p.partCode === code);
       if (part) {
-        await prisma.inventory.create({
-          data: {
+        await prisma.inventory.upsert({
+          where: { sparePartId_storeId: { sparePartId: part.id, storeId: inv.storeId } },
+          update: { quantity: qty, availableQty: qty, lockedQty: 0, minStock: Math.ceil(qty / 3) },
+          create: {
             sparePartId: part.id,
             storeId: inv.storeId,
             quantity: qty,
