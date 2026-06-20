@@ -378,6 +378,131 @@ describe('Ticket Cancel & Inventory Release', () => {
     expect(invAfterCancel!.lockedQty).toBe(0);
     expect(invAfterCancel!.availableQty).toBe(10);
   });
+
+  it('should generate REQUEST_RELEASE inventory log when cancelling ticket with locked inventory', async () => {
+    await prisma.technicianProfile.update({
+      where: { userId: techId },
+      data: { currentLoad: 0 },
+    });
+
+    const logSparePart = await prisma.sparePart.upsert({
+      where: { partCode: 'TEST-SP-LOG' },
+      update: {},
+      create: {
+        partCode: 'TEST-SP-LOG',
+        name: '流水测试备件',
+        category: '测试',
+        unit: '个',
+      },
+    });
+
+    await prisma.inventory.upsert({
+      where: { sparePartId_storeId: { sparePartId: logSparePart.id, storeId: testStoreId } },
+      update: { quantity: 15, lockedQty: 0, availableQty: 15, minStock: 3 },
+      create: {
+        sparePartId: logSparePart.id,
+        storeId: testStoreId,
+        quantity: 15,
+        lockedQty: 0,
+        availableQty: 15,
+        minStock: 3,
+      },
+    });
+
+    const logTicket = await prisma.repairTicket.create({
+      data: {
+        ticketNo: `WO-CANCEL-LOG-${Date.now()}`,
+        equipmentId: testEquipment2Id,
+        storeId: testStoreId,
+        faultType: '电路故障',
+        description: '测试取消工单流水',
+        imageUrls: '[]',
+        urgency: UrgencyLevel.MEDIUM,
+        status: TicketStatus.CREATED,
+        createdById: storeId,
+      },
+    });
+
+    await prisma.statusHistory.create({
+      data: {
+        ticketId: logTicket.id,
+        toStatus: TicketStatus.CREATED,
+        operatorId: storeId,
+        remark: '创建工单',
+      },
+    });
+
+    await request(app)
+      .post(`/api/tickets/${logTicket.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ technicianId: techId });
+
+    await request(app)
+      .post(`/api/tickets/${logTicket.id}/status`)
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({ status: 'TECHNICIAN_ON_WAY' });
+
+    await request(app)
+      .post(`/api/tickets/${logTicket.id}/status`)
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({ status: 'DIAGNOSING' });
+
+    const reqRes = await request(app)
+      .post('/api/inventories/requests')
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({
+        ticketId: logTicket.id,
+        sparePartId: logSparePart.id,
+        requestQty: 4,
+        fromStoreId: testStoreId,
+      });
+    expect(reqRes.status).toBe(201);
+    const requestId = reqRes.body.data.id;
+
+    const logsBeforeCancel = await prisma.inventoryLog.count({
+      where: {
+        sparePartId: logSparePart.id,
+        storeId: testStoreId,
+        changeType: 'REQUEST_RELEASE',
+      },
+    });
+
+    const cancelRes = await request(app)
+      .post(`/api/tickets/${logTicket.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'CANCELLED' });
+    expect(cancelRes.status).toBe(200);
+
+    const releaseLogs = await prisma.inventoryLog.findMany({
+      where: {
+        sparePartId: logSparePart.id,
+        storeId: testStoreId,
+        changeType: 'REQUEST_RELEASE',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(releaseLogs.length).toBe(logsBeforeCancel + 1);
+
+    const releaseLog = releaseLogs[0];
+    expect(releaseLog.quantityBefore).toBe(15);
+    expect(releaseLog.quantityAfter).toBe(15);
+    expect(releaseLog.lockedQtyBefore).toBe(4);
+    expect(releaseLog.lockedQtyAfter).toBe(0);
+    expect(releaseLog.availableQtyBefore).toBe(11);
+    expect(releaseLog.availableQtyAfter).toBe(15);
+    expect(releaseLog.relatedTicketId).toBe(logTicket.id);
+    expect(releaseLog.relatedRequestId).toBe(requestId);
+    expect(releaseLog.operatorId).toBe(adminId);
+    expect(releaseLog.remark).toContain(logTicket.ticketNo);
+    expect(releaseLog.remark).toContain('取消');
+
+    const finalInv = await prisma.inventory.findUnique({
+      where: { sparePartId_storeId: { sparePartId: logSparePart.id, storeId: testStoreId } },
+    });
+    expect(finalInv!.lockedQty).toBe(0);
+    expect(finalInv!.availableQty).toBe(15);
+    expect(finalInv!.quantity).toBe(15);
+  });
 });
 
 describe('SLA Escalation', () => {

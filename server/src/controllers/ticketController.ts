@@ -1,11 +1,12 @@
 import { Response } from 'express';
 import { createObjectCsvStringifier } from 'csv-writer';
-import { TicketStatus, Role, LogAction, SparePartRequestStatus, toJsonArray, parseJsonArray } from '../constants/enums';
+import { TicketStatus, Role, LogAction, SparePartRequestStatus, toJsonArray, parseJsonArray, InventoryChangeType } from '../constants/enums';
 import { AuthRequest } from '../types';
 import prisma from '../config/prisma';
 import { success, error } from '../utils/response';
 import { getPaginationParams, buildPaginatedResult } from '../utils/pagination';
 import { logOperation } from '../services/logService';
+import { createInventoryLog } from '../services/inventoryLogService';
 import {
   canTransition,
   canUserTransition,
@@ -375,20 +376,41 @@ export const updateTicketStatus = async (req: AuthRequest, res: Response): Promi
             status: { in: [SparePartRequestStatus.PENDING, SparePartRequestStatus.APPROVED, SparePartRequestStatus.PARTIAL_FULFILLED, SparePartRequestStatus.BACKORDER] },
           },
         });
-        for (const req of pendingRequests) {
-          const releaseQty = req.requestQty - req.fulfilledQty;
+        for (const pendingReq of pendingRequests) {
+          const releaseQty = pendingReq.requestQty - pendingReq.fulfilledQty;
           await tx.sparePartRequest.update({
-            where: { id: req.id },
+            where: { id: pendingReq.id },
             data: { status: SparePartRequestStatus.CANCELLED, remark: '工单取消，自动取消备件申请' },
           });
-          if (req.fromStoreId && releaseQty > 0) {
+          if (pendingReq.fromStoreId && releaseQty > 0) {
+            const invBefore = await tx.inventory.findUnique({
+              where: { sparePartId_storeId: { sparePartId: pendingReq.sparePartId, storeId: pendingReq.fromStoreId } },
+            });
             await tx.inventory.update({
-              where: { sparePartId_storeId: { sparePartId: req.sparePartId, storeId: req.fromStoreId } },
+              where: { sparePartId_storeId: { sparePartId: pendingReq.sparePartId, storeId: pendingReq.fromStoreId } },
               data: {
                 lockedQty: { decrement: releaseQty },
                 availableQty: { increment: releaseQty },
               },
             });
+            if (invBefore) {
+              await createInventoryLog({
+                sparePartId: pendingReq.sparePartId,
+                storeId: pendingReq.fromStoreId,
+                changeType: InventoryChangeType.REQUEST_RELEASE,
+                quantityBefore: invBefore.quantity,
+                quantityAfter: invBefore.quantity,
+                lockedQtyBefore: invBefore.lockedQty,
+                lockedQtyAfter: invBefore.lockedQty - releaseQty,
+                availableQtyBefore: invBefore.availableQty,
+                availableQtyAfter: invBefore.availableQty + releaseQty,
+                relatedTicketId: id,
+                relatedRequestId: pendingReq.id,
+                operatorId: req.user!.userId,
+                remark: `工单 ${ticket.ticketNo} 取消，释放锁定库存 ${releaseQty}`,
+                tx,
+              });
+            }
           }
         }
       }

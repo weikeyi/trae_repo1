@@ -30,11 +30,21 @@
 
     <div class="table-container">
       <el-table :data="list" v-loading="loading" border stripe>
-        <el-table-column prop="sparePart?.partCode" label="备件编号" width="130" />
-        <el-table-column prop="sparePart?.name" label="备件名称" />
-        <el-table-column prop="sparePart?.category" label="类别" width="100" />
-        <el-table-column prop="sparePart?.unit" label="单位" width="70" />
-        <el-table-column prop="store?.name" label="门店" width="140" />
+        <el-table-column label="备件编号" width="130">
+          <template #default="{ row }">{{ row.sparePart?.partCode }}</template>
+        </el-table-column>
+        <el-table-column label="备件名称">
+          <template #default="{ row }">{{ row.sparePart?.name }}</template>
+        </el-table-column>
+        <el-table-column label="类别" width="100">
+          <template #default="{ row }">{{ row.sparePart?.category }}</template>
+        </el-table-column>
+        <el-table-column label="单位" width="70">
+          <template #default="{ row }">{{ row.sparePart?.unit }}</template>
+        </el-table-column>
+        <el-table-column label="门店" width="140">
+          <template #default="{ row }">{{ row.store?.name }}</template>
+        </el-table-column>
         <el-table-column prop="quantity" label="总库存" width="80" align="right" />
         <el-table-column prop="lockedQty" label="已锁定" width="80" align="right">
           <template #default="{ row }">
@@ -126,8 +136,12 @@
             {{ formatTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column prop="sparePart?.name" label="备件" width="120" />
-        <el-table-column prop="store?.name" label="门店" width="100" />
+        <el-table-column label="备件" width="120">
+          <template #default="{ row }">{{ row.sparePart?.name }}</template>
+        </el-table-column>
+        <el-table-column label="门店" width="100">
+          <template #default="{ row }">{{ row.store?.name }}</template>
+        </el-table-column>
         <el-table-column label="变动类型" width="110">
           <template #default="{ row }">
             <el-tag :type="INVENTORY_CHANGE_TYPE_TYPE[row.changeType as InventoryChangeType]" size="small">
@@ -150,7 +164,9 @@
             {{ row.lockedQtyBefore }} → {{ row.lockedQtyAfter }}
           </template>
         </el-table-column>
-        <el-table-column prop="operator?.realName" label="操作人" width="80" />
+        <el-table-column label="操作人" width="80">
+          <template #default="{ row }">{{ row.operator?.realName }}</template>
+        </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
       </el-table>
 
@@ -169,9 +185,15 @@
 
     <el-dialog v-model="lowStockDialogVisible" title="低库存预警" width="800px">
       <el-table :data="lowStockList" v-loading="lowStockLoading" border stripe size="small" max-height="400">
-        <el-table-column prop="sparePart?.partCode" label="备件编号" width="130" />
-        <el-table-column prop="sparePart?.name" label="备件名称" />
-        <el-table-column prop="store?.name" label="门店" width="140" />
+        <el-table-column label="备件编号" width="130">
+          <template #default="{ row }">{{ row.sparePart?.partCode }}</template>
+        </el-table-column>
+        <el-table-column label="备件名称">
+          <template #default="{ row }">{{ row.sparePart?.name }}</template>
+        </el-table-column>
+        <el-table-column label="门店" width="140">
+          <template #default="{ row }">{{ row.store?.name }}</template>
+        </el-table-column>
         <el-table-column prop="availableQty" label="可用数量" width="90" align="right">
           <template #default="{ row }">
             <span style="color: #F56C6C; font-weight: bold">{{ row.availableQty }}</span>

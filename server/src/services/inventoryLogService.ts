@@ -22,26 +22,22 @@ interface CreateInventoryLogOptions {
 
 export const createInventoryLog = async (options: CreateInventoryLogOptions): Promise<void> => {
   const client = options.tx || prisma;
-  try {
-    await client.inventoryLog.create({
-      data: {
-        sparePartId: options.sparePartId,
-        storeId: options.storeId,
-        changeType: options.changeType,
-        quantityBefore: options.quantityBefore,
-        quantityAfter: options.quantityAfter,
-        lockedQtyBefore: options.lockedQtyBefore,
-        lockedQtyAfter: options.lockedQtyAfter,
-        availableQtyBefore: options.availableQtyBefore,
-        availableQtyAfter: options.availableQtyAfter,
-        relatedTicketId: options.relatedTicketId,
-        relatedRequestId: options.relatedRequestId,
-        relatedTransferId: options.relatedTransferId,
-        operatorId: options.operatorId,
-        remark: options.remark,
-      },
-    });
-  } catch (err) {
-    console.error('Failed to create inventory log:', err);
-  }
+  await client.inventoryLog.create({
+    data: {
+      sparePartId: options.sparePartId,
+      storeId: options.storeId,
+      changeType: options.changeType,
+      quantityBefore: options.quantityBefore,
+      quantityAfter: options.quantityAfter,
+      lockedQtyBefore: options.lockedQtyBefore,
+      lockedQtyAfter: options.lockedQtyAfter,
+      availableQtyBefore: options.availableQtyBefore,
+      availableQtyAfter: options.availableQtyAfter,
+      relatedTicketId: options.relatedTicketId,
+      relatedRequestId: options.relatedRequestId,
+      relatedTransferId: options.relatedTransferId,
+      operatorId: options.operatorId,
+      remark: options.remark,
+    },
+  });
 };
