@@ -3,6 +3,7 @@
     <div class="page-header">
       <h2 class="page-title">库存管理</h2>
       <div>
+        <el-button type="success" :icon="ShoppingCart" @click="goToRestockPurchase">补货/采购</el-button>
         <el-button type="warning" :icon="Warning" @click="openLowStockDialog">低库存预警</el-button>
         <el-button type="primary" :icon="Document" @click="openLogDialog">库存流水</el-button>
       </div>
@@ -230,12 +231,16 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
-import { Search, Refresh, Warning, Document } from '@element-plus/icons-vue';
+import { useRouter } from 'vue-router';
+import { Search, Refresh, Warning, Document, ShoppingCart } from '@element-plus/icons-vue';
 import { ElMessage, FormInstance, FormRules } from 'element-plus';
 import dayjs from 'dayjs';
 import { inventoryApi, type InventoryInput } from '@/api/inventory';
 import { storeApi } from '@/api/store';
 import type { Inventory, InventoryLog, Store, InventoryChangeType } from '@/types';
+
+const router = useRouter();
+const goToRestockPurchase = () => router.push('/restock-purchase');
 import { useUserStore } from '@/store/user';
 import { INVENTORY_CHANGE_TYPE_LABEL, INVENTORY_CHANGE_TYPE_TYPE } from '@/constants';
 

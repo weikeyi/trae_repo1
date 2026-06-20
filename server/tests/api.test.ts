@@ -18,6 +18,11 @@ let testEquipment3Id: number;
 beforeAll(async () => {
   await prisma.$connect();
 
+  await prisma.purchaseReceiptItem.deleteMany({});
+  await prisma.purchaseReceipt.deleteMany({});
+  await prisma.purchasePlanItem.deleteMany({});
+  await prisma.restockSuggestion.deleteMany({});
+  await prisma.purchasePlan.deleteMany({});
   await prisma.transfer.deleteMany({});
   await prisma.sparePartRequest.deleteMany({});
   await prisma.statusHistory.deleteMany({});
@@ -1150,5 +1155,509 @@ describe('Inventory Log & Low Stock Alert', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.total).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('Purchase & Restock Module', () => {
+  let testPart1: any;
+  let testPart2: any;
+  let testPart3: any;
+  let testStore2Id: number;
+  let store2Token: string;
+  let store2Id: number;
+
+  beforeAll(async () => {
+    const ts = Date.now();
+    const [p1, p2, p3] = await Promise.all([
+      prisma.sparePart.upsert({
+        where: { partCode: `PRST-${ts}-001` },
+        update: {},
+        create: { partCode: `PRST-${ts}-001`, name: '压缩机滤芯', category: '滤芯', unit: '个' },
+      }),
+      prisma.sparePart.upsert({
+        where: { partCode: `PRST-${ts}-002` },
+        update: {},
+        create: { partCode: `PRST-${ts}-002`, name: '铜管', category: '管材', unit: '米' },
+      }),
+      prisma.sparePart.upsert({
+        where: { partCode: `PRST-${ts}-003` },
+        update: {},
+        create: { partCode: `PRST-${ts}-003`, name: '风扇电机', category: '电机', unit: '台' },
+      }),
+    ]);
+    testPart1 = p1;
+    testPart2 = p2;
+    testPart3 = p3;
+
+    const existingInv1 = await prisma.inventory.findUnique({
+      where: { sparePartId_storeId: { sparePartId: p1.id, storeId: testStoreId } },
+    });
+    if (!existingInv1) {
+      await prisma.inventory.createMany({
+        data: [
+          { sparePartId: p1.id, storeId: testStoreId, quantity: 5, minStock: 20 },
+          { sparePartId: p2.id, storeId: testStoreId, quantity: 60, minStock: 50 },
+          { sparePartId: p3.id, storeId: testStoreId, quantity: 0, minStock: 10 },
+        ],
+      });
+    }
+
+    const store2 = await prisma.store.upsert({
+      where: { storeCode: `TST2-${ts}` },
+      update: {},
+      create: { storeCode: `TST2-${ts}`, name: '测试门店2', address: '地址2', region: '区域2' },
+    });
+    testStore2Id = store2.id;
+    const inv2 = await prisma.inventory.findUnique({
+      where: { sparePartId_storeId: { sparePartId: p1.id, storeId: store2.id } },
+    });
+    if (!inv2) {
+      await prisma.inventory.create({
+        data: { sparePartId: p1.id, storeId: store2.id, quantity: 8, minStock: 20 },
+      });
+    }
+
+    const s2pwd = await hashPassword('store123');
+    const store2User = await prisma.user.upsert({
+      where: { username: `teststore2-${ts}` },
+      update: {},
+      create: {
+        username: `teststore2-${ts}`,
+        passwordHash: s2pwd,
+        realName: '测试店长2',
+        role: Role.STORE_MANAGER,
+        storeId: store2.id,
+      },
+    });
+    store2Id = store2User.id;
+    store2Token = generateToken({
+      userId: store2User.id,
+      username: store2User.username,
+      role: Role.STORE_MANAGER,
+      storeId: store2.id,
+    });
+  });
+
+  describe('Restock Suggestion', () => {
+    it('should generate restock suggestions based on inventory status', async () => {
+      const res = await request(app)
+        .post('/api/purchase/restock-suggestions/generate')
+        .send({ force: true })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.count).toBeGreaterThanOrEqual(3);
+
+      const items: any[] = res.body.data.items || [];
+      expect(items.length).toBeGreaterThan(0);
+
+      const suggestionWithData = items.find(
+        (x: any) => x.sparePartId === testPart1.id || x.sparePartId === testPart3.id,
+      );
+      expect(suggestionWithData).toBeDefined();
+      expect(suggestionWithData.suggestedQty).toBeGreaterThan(0);
+      expect(suggestionWithData.expectedGap).toBeGreaterThanOrEqual(0);
+      expect(['URGENT', 'HIGH', 'MEDIUM', 'LOW']).toContain(suggestionWithData.priority);
+
+      const verifyList = await request(app)
+        .get('/api/purchase/restock-suggestions')
+        .query({ storeId: testStoreId, status: 'PENDING', pageSize: 100 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      const pendingSuggestions: any[] = verifyList.body.data.data;
+      const part1Pending = pendingSuggestions.find(
+        (x: any) => x.sparePartId === testPart1.id && x.storeId === testStoreId,
+      );
+      expect(part1Pending).toBeDefined();
+      expect(part1Pending.status).toBe('PENDING');
+
+      const part3Pending = pendingSuggestions.find(
+        (x: any) => x.sparePartId === testPart3.id && x.storeId === testStoreId,
+      );
+      expect(part3Pending).toBeDefined();
+      expect(part3Pending.availableQty).toBe(0);
+      expect(part3Pending.priority).toBe('URGENT');
+    });
+
+    it('should list suggestions with filters', async () => {
+      const res = await request(app)
+        .get('/api/purchase/restock-suggestions')
+        .query({ priority: 'URGENT', pageSize: 50 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      res.body.data.data.forEach((s: any) => expect(s.priority).toBe('URGENT'));
+    });
+
+    it('should dismiss a suggestion', async () => {
+      const listRes = await request(app)
+        .get('/api/purchase/restock-suggestions')
+        .query({ status: 'PENDING', storeId: testStoreId, pageSize: 5 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      const target = listRes.body.data.data[0];
+      expect(target).toBeDefined();
+
+      const dismissRes = await request(app)
+        .post(`/api/purchase/restock-suggestions/${target.id}/dismiss`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(dismissRes.status).toBe(200);
+
+      const check = await prisma.restockSuggestion.findUnique({ where: { id: target.id } });
+      expect(check!.status).toBe('DISMISSED');
+    });
+
+    it('should enforce store isolation - store manager should only see own store', async () => {
+      const res = await request(app)
+        .get('/api/purchase/restock-suggestions')
+        .query({ pageSize: 100 })
+        .set('Authorization', `Bearer ${store2Token}`);
+      expect(res.status).toBe(200);
+      (res.body.data.data as any[]).forEach((s) => {
+        expect(s.storeId).toBe(testStore2Id);
+      });
+    });
+  });
+
+  describe('Purchase Plan Flow', () => {
+    let suggestionIds: number[] = [];
+    let planId: number;
+
+    beforeAll(async () => {
+      const listRes = await request(app)
+        .get('/api/purchase/restock-suggestions')
+        .query({ status: 'PENDING', storeId: testStoreId, pageSize: 10 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      suggestionIds = listRes.body.data.data.slice(0, 2).map((x: any) => x.id);
+    });
+
+    it('should create purchase plan from suggestions', async () => {
+      expect(suggestionIds.length).toBeGreaterThanOrEqual(2);
+      const res = await request(app)
+        .post('/api/purchase/plans/from-suggestions')
+        .send({ suggestionIds, remark: 'test create from suggestions' })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      planId = res.body.data.id;
+      expect(res.body.data.status).toBe('DRAFT');
+      expect(res.body.data.items.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should not allow cross-store create from suggestions', async () => {
+      const crossRes = await request(app)
+        .post('/api/purchase/plans/from-suggestions')
+        .send({ suggestionIds, remark: 'cross-store attempt' })
+        .set('Authorization', `Bearer ${store2Token}`);
+      expect([403, 404, 400]).toContain(crossRes.status);
+    });
+
+    it('should manually create purchase plan', async () => {
+      const res = await request(app)
+        .post('/api/purchase/plans')
+        .send({
+          storeId: testStoreId,
+          items: [
+            { sparePartId: testPart2.id, planQty: 100, unitPrice: 12.5 },
+            { sparePartId: testPart3.id, planQty: 50 },
+          ],
+          remark: 'manual plan',
+        })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(res.status).toBe(201);
+      expect(res.body.data.totalQty).toBe(150);
+      expect(res.body.data.status).toBe('DRAFT');
+    });
+
+    it('should update purchase plan items when DRAFT', async () => {
+      const res = await request(app)
+        .put(`/api/purchase/plans/${planId}/items`)
+        .send({
+          items: [
+            { sparePartId: testPart1.id, planQty: 80 },
+            { sparePartId: testPart2.id, planQty: 60 },
+          ],
+        })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.totalQty).toBe(140);
+    });
+
+    it('should fail to edit submitted/approved plan items', async () => {
+      await request(app)
+        .post(`/api/purchase/plans/${planId}/submit`)
+        .set('Authorization', `Bearer ${storeToken}`);
+
+      const updateRes = await request(app)
+        .put(`/api/purchase/plans/${planId}/items`)
+        .send({ items: [{ sparePartId: testPart1.id, planQty: 5 }] })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(updateRes.status).toBe(400);
+    });
+
+    it('should reject invalid status transitions', async () => {
+      const draftRes = await request(app)
+        .post('/api/purchase/plans')
+        .send({ storeId: testStoreId, items: [{ sparePartId: testPart3.id, planQty: 5 }] })
+        .set('Authorization', `Bearer ${storeToken}`);
+      const draftId = draftRes.body.data.id;
+
+      const badApprove = await request(app)
+        .post(`/api/purchase/plans/${draftId}/approve`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(badApprove.status).toBe(400);
+    });
+
+    it('should allow APPROVE / REJECT / CANCEL flow with proper roles', async () => {
+      const p1 = await request(app)
+        .post('/api/purchase/plans')
+        .send({ storeId: testStoreId, items: [{ sparePartId: testPart3.id, planQty: 10 }] })
+        .set('Authorization', `Bearer ${storeToken}`);
+      await request(app)
+        .post(`/api/purchase/plans/${p1.body.data.id}/submit`)
+        .set('Authorization', `Bearer ${storeToken}`);
+
+      const approveRes = await request(app)
+        .post(`/api/purchase/plans/${p1.body.data.id}/approve`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(approveRes.status).toBe(200);
+      expect(approveRes.body.data.status).toBe('APPROVED');
+
+      const p2 = await request(app)
+        .post('/api/purchase/plans')
+        .send({ storeId: testStoreId, items: [{ sparePartId: testPart1.id, planQty: 10 }] })
+        .set('Authorization', `Bearer ${storeToken}`);
+      await request(app)
+        .post(`/api/purchase/plans/${p2.body.data.id}/submit`)
+        .set('Authorization', `Bearer ${storeToken}`);
+
+      const rejectRes = await request(app)
+        .post(`/api/purchase/plans/${p2.body.data.id}/reject`)
+        .send({ rejectReason: '预算不足' })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(rejectRes.status).toBe(200);
+      expect(rejectRes.body.data.status).toBe('REJECTED');
+      expect(rejectRes.body.data.rejectReason).toBe('预算不足');
+
+      const p3 = await request(app)
+        .post('/api/purchase/plans')
+        .send({ storeId: testStoreId, items: [{ sparePartId: testPart2.id, planQty: 10 }] })
+        .set('Authorization', `Bearer ${storeToken}`);
+
+      const cancelRes = await request(app)
+        .post(`/api/purchase/plans/${p3.body.data.id}/cancel`)
+        .send({ cancelReason: '不再需要' })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(cancelRes.status).toBe(200);
+      expect(cancelRes.body.data.status).toBe('CANCELLED');
+    });
+
+    it('should forbid non-admin from approving', async () => {
+      const p = await request(app)
+        .post('/api/purchase/plans')
+        .send({ storeId: testStoreId, items: [{ sparePartId: testPart3.id, planQty: 3 }] })
+        .set('Authorization', `Bearer ${storeToken}`);
+      await request(app)
+        .post(`/api/purchase/plans/${p.body.data.id}/submit`)
+        .set('Authorization', `Bearer ${storeToken}`);
+
+      const bad = await request(app)
+        .post(`/api/purchase/plans/${p.body.data.id}/approve`)
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(bad.status).toBe(403);
+    });
+  });
+
+  describe('Purchase Receipt & Inventory Update', () => {
+    let approvedPlanId: number;
+    let planItem1Id: number;
+    let planItem2Id: number;
+    let partId1: number;
+    let partId2: number;
+    const qty1 = 15;
+    const qty2 = 25;
+
+    beforeAll(async () => {
+      const p = await request(app)
+        .post('/api/purchase/plans')
+        .send({
+          storeId: testStoreId,
+          items: [
+            { sparePartId: testPart1.id, planQty: qty1 },
+            { sparePartId: testPart2.id, planQty: qty2 },
+          ],
+        })
+        .set('Authorization', `Bearer ${storeToken}`);
+      approvedPlanId = p.body.data.id;
+      const items: any[] = p.body.data.items;
+      planItem1Id = items.find((i: any) => i.sparePartId === testPart1.id)!.id;
+      planItem2Id = items.find((i: any) => i.sparePartId === testPart2.id)!.id;
+      partId1 = testPart1.id;
+      partId2 = testPart2.id;
+
+      await request(app)
+        .post(`/api/purchase/plans/${approvedPlanId}/submit`)
+        .set('Authorization', `Bearer ${storeToken}`);
+      await request(app)
+        .post(`/api/purchase/plans/${approvedPlanId}/approve`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    });
+
+    it('should create and confirm receipt, updating inventory and logs', async () => {
+      const invBefore1 = await prisma.inventory.findUnique({
+        where: { sparePartId_storeId: { sparePartId: partId1, storeId: testStoreId } },
+      });
+      const invBefore2 = await prisma.inventory.findUnique({
+        where: { sparePartId_storeId: { sparePartId: partId2, storeId: testStoreId } },
+      });
+
+      const receiptQty1 = Math.ceil(qty1 / 2);
+      const receiptQty2 = qty2;
+
+      const createRes = await request(app)
+        .post('/api/purchase/receipts')
+        .send({
+          planId: approvedPlanId,
+          items: [
+            { planItemId: planItem1Id, quantity: receiptQty1 },
+            { planItemId: planItem2Id, quantity: receiptQty2 },
+          ],
+          remark: 'first delivery',
+        })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(createRes.status).toBe(201);
+      expect(createRes.body.data.status).toBe('PENDING');
+      const receiptId = createRes.body.data.id;
+
+      const confirmRes = await request(app)
+        .post(`/api/purchase/receipts/${receiptId}/confirm`)
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(confirmRes.status).toBe(200);
+      expect(confirmRes.body.data.status).toBe('CONFIRMED');
+
+      const invAfter1 = await prisma.inventory.findUnique({
+        where: { sparePartId_storeId: { sparePartId: partId1, storeId: testStoreId } },
+      });
+      const invAfter2 = await prisma.inventory.findUnique({
+        where: { sparePartId_storeId: { sparePartId: partId2, storeId: testStoreId } },
+      });
+      expect(invAfter1!.quantity).toBe(invBefore1!.quantity + receiptQty1);
+      expect(invAfter2!.quantity).toBe(invBefore2!.quantity + receiptQty2);
+      expect(invAfter1!.availableQty).toBe(invBefore1!.availableQty + receiptQty1);
+      expect(invAfter2!.availableQty).toBe(invBefore2!.availableQty + receiptQty2);
+
+      const logs1 = await prisma.inventoryLog.findMany({
+        where: { sparePartId: partId1, storeId: testStoreId, changeType: 'PURCHASE_IN' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      });
+      expect(logs1.length).toBe(1);
+      const log1 = logs1[0];
+      expect(log1.quantityAfter - log1.quantityBefore).toBe(receiptQty1);
+      expect(log1.quantityAfter).toBe(invBefore1!.quantity + receiptQty1);
+      expect(log1.relatedPurchasePlanId).toBe(approvedPlanId);
+      expect(log1.relatedPurchaseReceiptId).toBe(receiptId);
+      expect(log1.operatorId).toBe(storeId);
+
+      const planItem1 = await prisma.purchasePlanItem.findUnique({ where: { id: planItem1Id } });
+      expect(planItem1!.receivedQty).toBe(receiptQty1);
+
+      const plan = await prisma.purchasePlan.findUnique({ where: { id: approvedPlanId } });
+      expect(plan!.receivedQty).toBe(receiptQty1 + receiptQty2);
+      expect(['PARTIAL_RECEIVED', 'FULL_RECEIVED']).toContain(plan!.status);
+    });
+
+    it('should reject creating second PENDING receipt (duplicate protection)', async () => {
+      const dpPlan = await request(app)
+        .post('/api/purchase/plans')
+        .send({
+          storeId: testStoreId,
+          items: [{ sparePartId: testPart3.id, planQty: 20 }],
+        })
+        .set('Authorization', `Bearer ${storeToken}`);
+      const dpPlanId = dpPlan.body.data.id;
+      const dpItemId = dpPlan.body.data.items[0].id;
+      await request(app)
+        .post(`/api/purchase/plans/${dpPlanId}/submit`)
+        .set('Authorization', `Bearer ${storeToken}`);
+      await request(app)
+        .post(`/api/purchase/plans/${dpPlanId}/approve`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      const first = await request(app)
+        .post('/api/purchase/receipts')
+        .send({
+          planId: dpPlanId,
+          items: [{ planItemId: dpItemId, quantity: 10 }],
+        })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(first.status).toBe(201);
+      expect(first.body.data.status).toBe('PENDING');
+      const firstReceiptId = first.body.data.id;
+
+      const second = await request(app)
+        .post('/api/purchase/receipts')
+        .send({
+          planId: dpPlanId,
+          items: [{ planItemId: dpItemId, quantity: 5 }],
+        })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(second.status).toBe(400);
+
+      await request(app)
+        .delete(`/api/purchase/receipts/${firstReceiptId}`)
+        .set('Authorization', `Bearer ${storeToken}`);
+    });
+
+    it('should reject over-receiving beyond plan qty', async () => {
+      const bigRes = await request(app)
+        .post('/api/purchase/receipts')
+        .send({
+          planId: approvedPlanId,
+          items: [{ planItemId: planItem2Id, quantity: 999 }],
+        })
+        .set('Authorization', `Bearer ${storeToken}`);
+      expect(bigRes.status).toBe(400);
+    });
+
+    it('should enforce store isolation on receipts', async () => {
+      const listRes = await request(app)
+        .get('/api/purchase/receipts')
+        .query({ pageSize: 100 })
+        .set('Authorization', `Bearer ${store2Token}`);
+      expect(listRes.status).toBe(200);
+      (listRes.body.data.data as any[]).forEach((r) => {
+        expect(r.storeId).toBe(testStore2Id);
+      });
+
+      const createRes = await request(app)
+        .post('/api/purchase/receipts')
+        .send({ planId: approvedPlanId, items: [{ planItemId: planItem1Id, quantity: 1 }] })
+        .set('Authorization', `Bearer ${store2Token}`);
+      expect(createRes.status).toBe(403);
+    });
+
+    it('should finish plan to FULL_RECEIVED on last receipt', async () => {
+      await prisma.purchaseReceipt.deleteMany({
+        where: { planId: approvedPlanId, status: 'PENDING' },
+      });
+
+      const remaining = await prisma.purchasePlanItem.findUnique({ where: { id: planItem1Id } });
+      if (remaining && remaining.planQty > remaining.receivedQty) {
+        const qtyLeft = remaining.planQty - remaining.receivedQty;
+        const r = await request(app)
+          .post('/api/purchase/receipts')
+          .send({ planId: approvedPlanId, items: [{ planItemId: planItem1Id, quantity: qtyLeft }] })
+          .set('Authorization', `Bearer ${storeToken}`);
+        if (r.status === 201) {
+          await request(app)
+            .post(`/api/purchase/receipts/${r.body.data.id}/confirm`)
+            .set('Authorization', `Bearer ${storeToken}`);
+        }
+      }
+
+      const finalPlan = await prisma.purchasePlan.findUnique({ where: { id: approvedPlanId } });
+      expect(finalPlan!.status).toBe('FULL_RECEIVED');
+      expect(finalPlan!.receivedQty).toBe(finalPlan!.totalQty);
+    });
   });
 });

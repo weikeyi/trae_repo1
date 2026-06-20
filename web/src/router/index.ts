@@ -75,6 +75,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '调拨管理', icon: 'Switch' },
       },
       {
+        path: 'restock-purchase',
+        name: 'RestockPurchase',
+        component: () => import('@/views/spareparts/PurchaseList.vue'),
+        meta: { title: '补货/采购', icon: 'ShoppingCart' },
+      },
+      {
         path: 'users',
         name: 'Users',
         component: () => import('@/views/UserList.vue'),

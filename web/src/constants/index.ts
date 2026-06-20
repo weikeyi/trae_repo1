@@ -1,4 +1,15 @@
-import type { TicketStatus, UrgencyLevel, SparePartRequestStatus, TransferStatus, Role, InventoryChangeType } from '@/types';
+import type {
+  TicketStatus,
+  UrgencyLevel,
+  SparePartRequestStatus,
+  TransferStatus,
+  Role,
+  InventoryChangeType,
+  RestockSuggestionPriority,
+  RestockSuggestionStatus,
+  PurchasePlanStatus,
+  PurchaseReceiptStatus,
+} from '@/types';
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: '系统管理员',
@@ -125,6 +136,7 @@ export const INVENTORY_CHANGE_TYPE_LABEL: Record<InventoryChangeType, string> = 
   TRANSFER_IN: '调拨入库',
   TRANSFER_CANCEL_RETURN: '调拨取消退回',
   ADMIN_ADJUST: '管理员调整',
+  PURCHASE_IN: '采购入库',
 };
 
 export const INVENTORY_CHANGE_TYPE_TYPE: Record<InventoryChangeType, 'warning' | 'success' | 'danger' | 'info' | 'primary' | ''> = {
@@ -134,4 +146,61 @@ export const INVENTORY_CHANGE_TYPE_TYPE: Record<InventoryChangeType, 'warning' |
   TRANSFER_IN: 'primary',
   TRANSFER_CANCEL_RETURN: 'info',
   ADMIN_ADJUST: '',
+  PURCHASE_IN: 'success',
+};
+
+export const RESTOCK_PRIORITY_LABEL: Record<RestockSuggestionPriority, string> = {
+  URGENT: '紧急',
+  HIGH: '高',
+  MEDIUM: '中',
+  LOW: '低',
+};
+
+export const RESTOCK_PRIORITY_TYPE: Record<RestockSuggestionPriority, 'danger' | 'warning' | 'primary' | 'info'> = {
+  URGENT: 'danger',
+  HIGH: 'warning',
+  MEDIUM: 'primary',
+  LOW: 'info',
+};
+
+export const RESTOCK_STATUS_LABEL: Record<RestockSuggestionStatus, string> = {
+  PENDING: '待处理',
+  CONVERTED: '已生成计划',
+  DISMISSED: '已忽略',
+};
+
+export const RESTOCK_STATUS_TYPE: Record<RestockSuggestionStatus, 'warning' | 'success' | 'info'> = {
+  PENDING: 'warning',
+  CONVERTED: 'success',
+  DISMISSED: 'info',
+};
+
+export const PURCHASE_PLAN_STATUS_LABEL: Record<PurchasePlanStatus, string> = {
+  DRAFT: '草稿',
+  SUBMITTED: '待审批',
+  APPROVED: '已批准',
+  REJECTED: '已驳回',
+  CANCELLED: '已取消',
+  PARTIAL_RECEIVED: '部分入库',
+  FULL_RECEIVED: '入库完成',
+};
+
+export const PURCHASE_PLAN_STATUS_TYPE: Record<PurchasePlanStatus, 'info' | 'warning' | 'primary' | 'danger' | 'success'> = {
+  DRAFT: 'info',
+  SUBMITTED: 'warning',
+  APPROVED: 'primary',
+  REJECTED: 'danger',
+  CANCELLED: 'info',
+  PARTIAL_RECEIVED: 'warning',
+  FULL_RECEIVED: 'success',
+};
+
+export const PURCHASE_RECEIPT_STATUS_LABEL: Record<PurchaseReceiptStatus, string> = {
+  PENDING: '待确认',
+  CONFIRMED: '已确认',
+};
+
+export const PURCHASE_RECEIPT_STATUS_TYPE: Record<PurchaseReceiptStatus, 'warning' | 'success'> = {
+  PENDING: 'warning',
+  CONFIRMED: 'success',
 };

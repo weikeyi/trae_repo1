@@ -77,8 +77,41 @@ export const InventoryChangeType = {
   TRANSFER_IN: 'TRANSFER_IN',
   TRANSFER_CANCEL_RETURN: 'TRANSFER_CANCEL_RETURN',
   ADMIN_ADJUST: 'ADMIN_ADJUST',
+  PURCHASE_IN: 'PURCHASE_IN',
 } as const;
 export type InventoryChangeType = (typeof InventoryChangeType)[keyof typeof InventoryChangeType];
+
+export const RestockSuggestionPriority = {
+  URGENT: 'URGENT',
+  HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+  LOW: 'LOW',
+} as const;
+export type RestockSuggestionPriority = (typeof RestockSuggestionPriority)[keyof typeof RestockSuggestionPriority];
+
+export const RestockSuggestionStatus = {
+  PENDING: 'PENDING',
+  CONVERTED: 'CONVERTED',
+  DISMISSED: 'DISMISSED',
+} as const;
+export type RestockSuggestionStatus = (typeof RestockSuggestionStatus)[keyof typeof RestockSuggestionStatus];
+
+export const PurchasePlanStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+  PARTIAL_RECEIVED: 'PARTIAL_RECEIVED',
+  FULL_RECEIVED: 'FULL_RECEIVED',
+} as const;
+export type PurchasePlanStatus = (typeof PurchasePlanStatus)[keyof typeof PurchasePlanStatus];
+
+export const PurchaseReceiptStatus = {
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+} as const;
+export type PurchaseReceiptStatus = (typeof PurchaseReceiptStatus)[keyof typeof PurchaseReceiptStatus];
 
 // String(JSON) 数组辅助函数
 // 现在 schema 中字段是 String 类型，存储 JSON.stringify 后的字符串

@@ -172,6 +172,18 @@ async function main() {
     },
   });
 
+  await prisma.purchaseReceiptItem.deleteMany({});
+  await prisma.purchaseReceipt.deleteMany({});
+  await prisma.purchasePlanItem.deleteMany({});
+  await prisma.restockSuggestion.deleteMany({});
+  await prisma.purchasePlan.deleteMany({});
+  await prisma.inventoryLog.deleteMany({});
+  await prisma.transfer.deleteMany({});
+  await prisma.sparePartRequest.deleteMany({});
+  await prisma.statusHistory.deleteMany({});
+  await prisma.operationLog.deleteMany({});
+  await prisma.repairTicket.deleteMany({});
+  await prisma.inventory.deleteMany({});
   await prisma.equipment.deleteMany({});
   const equipments = [
     { equipmentCode: 'EQ-SH001-001', name: '中央空调机组1号', model: '格力GMV-500', category: '空调设备', storeId: store1.id, status: 'NORMAL', description: '门店主空调机组' },
@@ -199,7 +211,6 @@ async function main() {
     await prisma.slaRule.create({ data: sla });
   }
 
-  await prisma.sparePart.deleteMany({});
   const spareParts = [
     { partCode: 'SP-AC-001', name: '空调压缩机', category: '空调配件', unit: '台', description: '格力/美的通用压缩机' },
     { partCode: 'SP-AC-002', name: '空调风机电机', category: '空调配件', unit: '台', description: '室外风机电机' },
@@ -218,7 +229,6 @@ async function main() {
     createdParts.push(p);
   }
 
-  await prisma.inventory.deleteMany({});
   const inventoryData = [
     { storeId: hqStore.id, stock: { 'SP-AC-001': 10, 'SP-AC-002': 15, 'SP-AC-003': 20, 'SP-RF-001': 5, 'SP-RF-002': 12, 'SP-EL-001': 30, 'SP-EL-002': 25, 'SP-EL-003': 8, 'SP-ME-001': 3 } },
     { storeId: store1.id, stock: { 'SP-AC-001': 2, 'SP-AC-002': 3, 'SP-EL-001': 5, 'SP-EL-002': 4 } },

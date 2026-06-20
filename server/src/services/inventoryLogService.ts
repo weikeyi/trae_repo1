@@ -15,6 +15,8 @@ interface CreateInventoryLogOptions {
   relatedTicketId?: number | null;
   relatedRequestId?: number | null;
   relatedTransferId?: number | null;
+  relatedPurchasePlanId?: number | null;
+  relatedPurchaseReceiptId?: number | null;
   operatorId: number;
   remark?: string;
   tx?: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
@@ -36,6 +38,8 @@ export const createInventoryLog = async (options: CreateInventoryLogOptions): Pr
       relatedTicketId: options.relatedTicketId,
       relatedRequestId: options.relatedRequestId,
       relatedTransferId: options.relatedTransferId,
+      relatedPurchasePlanId: options.relatedPurchasePlanId,
+      relatedPurchaseReceiptId: options.relatedPurchaseReceiptId,
       operatorId: options.operatorId,
       remark: options.remark,
     },

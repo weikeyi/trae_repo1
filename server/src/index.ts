@@ -13,6 +13,7 @@ import inventoryRoutes from './routes/inventoryRoutes';
 import logRoutes from './routes/logRoutes';
 import statsRoutes from './routes/statsRoutes';
 import slaRoutes from './routes/slaRoutes';
+import purchaseRoutes from './routes/purchaseRoutes';
 import { checkAndEscalateOverdue } from './services/ticketService';
 
 const app = express();
@@ -31,6 +32,7 @@ app.use('/api/inventories', inventoryRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/sla', slaRoutes);
+app.use('/api/purchase', purchaseRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });

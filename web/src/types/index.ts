@@ -35,7 +35,125 @@ export type InventoryChangeType =
   | 'TRANSFER_OUT'
   | 'TRANSFER_IN'
   | 'TRANSFER_CANCEL_RETURN'
-  | 'ADMIN_ADJUST';
+  | 'ADMIN_ADJUST'
+  | 'PURCHASE_IN';
+
+export type RestockSuggestionPriority = 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW';
+export type RestockSuggestionStatus = 'PENDING' | 'CONVERTED' | 'DISMISSED';
+export type PurchasePlanStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'PARTIAL_RECEIVED'
+  | 'FULL_RECEIVED';
+export type PurchaseReceiptStatus = 'PENDING' | 'CONFIRMED';
+
+export interface RestockSuggestion {
+  id: number;
+  sparePartId: number;
+  sparePart?: SparePart;
+  storeId: number;
+  store?: Store;
+  availableQty: number;
+  lockedQty: number;
+  minStock: number;
+  pendingRequestQty: number;
+  inTransitQty: number;
+  consumption30d: number;
+  suggestedQty: number;
+  expectedGap: number;
+  reason: string;
+  priority: RestockSuggestionPriority;
+  status: RestockSuggestionStatus;
+  purchasePlanId?: number | null;
+  purchasePlan?: { id: number; planNo: string; status: string } | null;
+  convertedById?: number | null;
+  convertedBy?: { id: number; realName: string } | null;
+  convertedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchasePlanItem {
+  id: number;
+  planId: number;
+  sparePartId: number;
+  sparePart?: SparePart;
+  planQty: number;
+  receivedQty: number;
+  unitPrice?: number | null;
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchaseReceiptItem {
+  id: number;
+  receiptId: number;
+  planItemId: number;
+  planItem?: PurchasePlanItem;
+  sparePartId: number;
+  sparePart?: SparePart;
+  quantity: number;
+  unitPrice?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchaseReceipt {
+  id: number;
+  receiptNo: string;
+  planId: number;
+  plan?: { id: number; planNo: string; status: string };
+  storeId: number;
+  store?: Store;
+  status: PurchaseReceiptStatus;
+  totalQty: number;
+  remark?: string | null;
+  createdById: number;
+  createdBy?: { id: number; realName: string };
+  confirmedById?: number | null;
+  confirmedBy?: { id: number; realName: string } | null;
+  confirmedAt?: string | null;
+  items?: PurchaseReceiptItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchasePlan {
+  id: number;
+  planNo: string;
+  status: PurchasePlanStatus;
+  storeId: number;
+  store?: Store;
+  totalQty: number;
+  estimatedCost?: number | null;
+  remark?: string | null;
+  createdById: number;
+  createdBy?: { id: number; realName: string };
+  submittedById?: number | null;
+  submittedBy?: { id: number; realName: string } | null;
+  submittedAt?: string | null;
+  approvedById?: number | null;
+  approvedBy?: { id: number; realName: string } | null;
+  approvedAt?: string | null;
+  rejectedById?: number | null;
+  rejectedBy?: { id: number; realName: string } | null;
+  rejectedAt?: string | null;
+  rejectReason?: string | null;
+  cancelledById?: number | null;
+  cancelledBy?: { id: number; realName: string } | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  receivedQty: number;
+  items?: PurchasePlanItem[];
+  suggestions?: RestockSuggestion[];
+  receipts?: PurchaseReceipt[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface User {
   id: number;

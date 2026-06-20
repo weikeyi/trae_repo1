@@ -35,6 +35,14 @@ model User {
   approvedParts       SparePartRequest[] @relation("Approver")
   operatedTransfers   Transfer[]
   inventoryLogs       InventoryLog[]
+  convertedSuggestions RestockSuggestion[] @relation("RestockConverter")
+  createdPurchasePlans PurchasePlan[] @relation("PurchasePlanCreator")
+  submittedPurchasePlans PurchasePlan[] @relation("PurchasePlanSubmitter")
+  approvedPurchasePlans PurchasePlan[] @relation("PurchasePlanApprover")
+  rejectedPurchasePlans PurchasePlan[] @relation("PurchasePlanRejector")
+  cancelledPurchasePlans PurchasePlan[] @relation("PurchasePlanCanceller")
+  createdPurchaseReceipts PurchaseReceipt[] @relation("PurchaseReceiptCreator")
+  confirmedPurchaseReceipts PurchaseReceipt[] @relation("PurchaseReceiptConfirmer")
 }
 
 model TechnicianProfile {
@@ -73,6 +81,9 @@ model Store {
   transfersFrom           Transfer[] @relation("TransferFromStore")
   transfersTo             Transfer[] @relation("TransferToStore")
   inventoryLogs           InventoryLog[]
+  restockSuggestions      RestockSuggestion[]
+  purchasePlans           PurchasePlan[]
+  purchaseReceipts        PurchaseReceipt[]
 }
 
 model Equipment {
@@ -168,6 +179,9 @@ model SparePart {
   sparePartRequests       SparePartRequest[]
   transfers               Transfer[]
   inventoryLogs           InventoryLog[]
+  restockSuggestions      RestockSuggestion[]
+  purchasePlanItems       PurchasePlanItem[]
+  purchaseReceiptItems    PurchaseReceiptItem[]
 }
 
 model Inventory {
@@ -249,10 +263,135 @@ model InventoryLog {
   relatedTicketId     Int?
   relatedRequestId    Int?
   relatedTransferId   Int?
+  relatedPurchasePlanId     Int?
+  relatedPurchaseReceiptId  Int?
   operatorId          Int
   operator            User      @relation(fields: [operatorId], references: [id])
   remark              String?
   createdAt           DateTime  @default(now())
+
+  purchasePlan     PurchasePlan?     @relation(fields: [relatedPurchasePlanId], references: [id])
+  purchaseReceipt  PurchaseReceipt?  @relation(fields: [relatedPurchaseReceiptId], references: [id])
+}
+
+model RestockSuggestion {
+  id              Int       @id @default(autoincrement())
+  sparePartId     Int
+  sparePart       SparePart @relation(fields: [sparePartId], references: [id])
+  storeId         Int
+  store           Store     @relation(fields: [storeId], references: [id])
+  availableQty    Int       @default(0)
+  lockedQty       Int       @default(0)
+  minStock        Int       @default(0)
+  pendingRequestQty Int     @default(0)
+  inTransitQty    Int       @default(0)
+  consumption30d  Int       @default(0)
+  suggestedQty    Int       @default(0)
+  expectedGap     Int       @default(0)
+  reason          String
+  // priority: URGENT | HIGH | MEDIUM | LOW
+  priority        String
+  // status: PENDING | CONVERTED | DISMISSED
+  status          String    @default("PENDING")
+  purchasePlanId  Int?
+  purchasePlan    PurchasePlan? @relation(fields: [purchasePlanId], references: [id])
+  convertedById   Int?
+  convertedBy     User?     @relation("RestockConverter", fields: [convertedById], references: [id])
+  convertedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([sparePartId, storeId, status])
+}
+
+model PurchasePlan {
+  id              Int       @id @default(autoincrement())
+  planNo          String    @unique
+  // status: DRAFT | SUBMITTED | APPROVED | REJECTED | CANCELLED | PARTIAL_RECEIVED | FULL_RECEIVED
+  status          String    @default("DRAFT")
+  storeId         Int
+  store           Store     @relation(fields: [storeId], references: [id])
+  totalQty        Int       @default(0)
+  estimatedCost   Float?    @default(0)
+  remark          String?
+  createdById     Int
+  createdBy       User      @relation("PurchasePlanCreator", fields: [createdById], references: [id])
+  submittedById   Int?
+  submittedBy     User?     @relation("PurchasePlanSubmitter", fields: [submittedById], references: [id])
+  submittedAt     DateTime?
+  approvedById    Int?
+  approvedBy      User?     @relation("PurchasePlanApprover", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  rejectedById    Int?
+  rejectedBy      User?     @relation("PurchasePlanRejector", fields: [rejectedById], references: [id])
+  rejectedAt      DateTime?
+  rejectReason    String?
+  cancelledById   Int?
+  cancelledBy     User?     @relation("PurchasePlanCanceller", fields: [cancelledById], references: [id])
+  cancelledAt     DateTime?
+  cancelReason    String?
+  receivedQty     Int       @default(0)
+  items           PurchasePlanItem[]
+  suggestions     RestockSuggestion[]
+  receipts        PurchaseReceipt[]
+  inventoryLogs   InventoryLog[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model PurchasePlanItem {
+  id              Int       @id @default(autoincrement())
+  planId          Int
+  plan            PurchasePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sparePartId     Int
+  sparePart       SparePart @relation(fields: [sparePartId], references: [id])
+  planQty         Int       @default(0)
+  receivedQty     Int       @default(0)
+  unitPrice       Float?    @default(0)
+  remark          String?
+  receiptItems    PurchaseReceiptItem[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([planId, sparePartId])
+}
+
+model PurchaseReceipt {
+  id              Int       @id @default(autoincrement())
+  receiptNo       String    @unique
+  planId          Int
+  plan            PurchasePlan @relation(fields: [planId], references: [id])
+  storeId         Int
+  store           Store     @relation(fields: [storeId], references: [id])
+  // status: PENDING | CONFIRMED
+  status          String    @default("PENDING")
+  totalQty        Int       @default(0)
+  remark          String?
+  createdById     Int
+  createdBy       User      @relation("PurchaseReceiptCreator", fields: [createdById], references: [id])
+  confirmedById   Int?
+  confirmedBy     User?     @relation("PurchaseReceiptConfirmer", fields: [confirmedById], references: [id])
+  confirmedAt     DateTime?
+  items           PurchaseReceiptItem[]
+  inventoryLogs   InventoryLog[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model PurchaseReceiptItem {
+  id              Int       @id @default(autoincrement())
+  receiptId       Int
+  receipt         PurchaseReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  planItemId      Int
+  planItem        PurchasePlanItem @relation(fields: [planItemId], references: [id])
+  sparePartId     Int
+  sparePart       SparePart @relation(fields: [sparePartId], references: [id])
+  quantity        Int       @default(0)
+  unitPrice       Float?    @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([receiptId, planItemId])
 }
 
 model OperationLog {
