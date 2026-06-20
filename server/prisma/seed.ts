@@ -185,6 +185,7 @@ async function main() {
   await prisma.repairTicket.deleteMany({});
   await prisma.inventory.deleteMany({});
   await prisma.equipment.deleteMany({});
+  await prisma.sparePart.deleteMany({});
   const equipments = [
     { equipmentCode: 'EQ-SH001-001', name: '中央空调机组1号', model: '格力GMV-500', category: '空调设备', storeId: store1.id, status: 'NORMAL', description: '门店主空调机组' },
     { equipmentCode: 'EQ-SH001-002', name: '冷库制冷机组', model: '比泽尔4G-20.2', category: '制冷设备', storeId: store1.id, status: 'NORMAL', description: '生鲜区冷库' },

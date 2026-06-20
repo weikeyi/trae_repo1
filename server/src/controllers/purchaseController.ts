@@ -102,14 +102,16 @@ export const generateRestockSuggestions = async (req: AuthRequest, res: Response
 
     const suggestions: any[] = [];
     for (const inv of inventories) {
-      const pendingRequests = await prisma.sparePartRequest.count({
+      const pendingRequestsRaw = await prisma.sparePartRequest.findMany({
         where: {
           sparePartId: inv.sparePartId,
           toStoreId: inv.storeId,
-          status: { in: [SparePartRequestStatus.PENDING, SparePartRequestStatus.APPROVED, SparePartRequestStatus.BACKORDER] },
+          status: { in: [SparePartRequestStatus.PENDING, SparePartRequestStatus.APPROVED, SparePartRequestStatus.BACKORDER, SparePartRequestStatus.PARTIAL_FULFILLED] },
           requestQty: { gt: 0 },
         },
+        select: { requestQty: true, fulfilledQty: true },
       });
+      const pendingRequestQty = pendingRequestsRaw.reduce((sum, r) => sum + Math.max(0, r.requestQty - r.fulfilledQty), 0);
 
       const inTransitQty = await prisma.transfer.aggregate({
         where: {
@@ -124,16 +126,16 @@ export const generateRestockSuggestions = async (req: AuthRequest, res: Response
         where: {
           sparePartId: inv.sparePartId,
           storeId: inv.storeId,
-          changeType: { in: [InventoryChangeType.REQUEST_LOCK, InventoryChangeType.TRANSFER_OUT] },
+          changeType: InventoryChangeType.TRANSFER_OUT,
           createdAt: { gte: thirtyDaysAgo },
         },
       });
-      const consumption30d = consumptionLogs.reduce((sum, l) => sum + (l.quantityBefore - l.quantityAfter), 0);
+      const consumption30d = consumptionLogs.reduce((sum, l) => sum + Math.max(0, l.quantityBefore - l.quantityAfter), 0);
       const netConsumption = Math.max(0, consumption30d);
 
       const safetyStock = Math.max(inv.minStock, Math.ceil(netConsumption * 0.3));
-      const expectedDemand = Math.max(netConsumption, pendingRequests * 2);
-      const effectiveAvailable = Math.max(0, inv.availableQty - pendingRequests + (inTransitQty._sum.quantity || 0));
+      const expectedDemand = Math.max(netConsumption, pendingRequestQty * 2);
+      const effectiveAvailable = Math.max(0, inv.availableQty - pendingRequestQty + (inTransitQty._sum.quantity || 0));
       const expectedGap = Math.max(0, safetyStock + expectedDemand - effectiveAvailable);
       const suggestedQty = expectedGap;
 
@@ -143,7 +145,7 @@ export const generateRestockSuggestions = async (req: AuthRequest, res: Response
         expectedGap,
         inv.availableQty,
         safetyStock,
-        pendingRequests,
+        pendingRequestQty,
         netConsumption,
       );
 
@@ -153,7 +155,7 @@ export const generateRestockSuggestions = async (req: AuthRequest, res: Response
         availableQty: inv.availableQty,
         lockedQty: inv.lockedQty,
         minStock: safetyStock,
-        pendingRequestQty: pendingRequests,
+        pendingRequestQty,
         inTransitQty: inTransitQty._sum.quantity || 0,
         consumption30d: netConsumption,
         suggestedQty: Math.max(suggestedQty, 0),

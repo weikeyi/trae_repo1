@@ -25,9 +25,9 @@ const router = Router();
 router.use(authenticate);
 
 // ===== 补货建议 =====
-router.post('/restock-suggestions/generate', generateRestockSuggestions);
-router.get('/restock-suggestions', listRestockSuggestions);
-router.post('/restock-suggestions/:id/dismiss', dismissRestockSuggestion);
+router.post('/restock-suggestions/generate', requireStoreOrAdmin, generateRestockSuggestions);
+router.get('/restock-suggestions', requireStoreOrAdmin, listRestockSuggestions);
+router.post('/restock-suggestions/:id/dismiss', requireStoreOrAdmin, dismissRestockSuggestion);
 
 // ===== 采购计划 =====
 router.post('/plans/from-suggestions', requireStoreOrAdmin, createPurchasePlanFromSuggestions);
